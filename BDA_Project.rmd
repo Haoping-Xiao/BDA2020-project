@@ -1,0 +1,143 @@
+---
+title: "BDA - Project"
+author: "Anonymous"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+# This chunk sets echo = TRUE as default, that is print all code.
+# knitr::opts_chunk$set can be used to set other notebook generation options, too.
+# include=FALSE inside curly brackets makes this block not be included in the pdf.
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls()) # remove all output
+library(reticulate) # MUST BE INSTALLED via remotes::install_github("rstudio/reticulate")
+use_condaenv('bda')
+```
+
+# Decision Analysis for Factory Data
+
+This submission is completed in `python` with `pystan`.
+```{r, engine='python'}
+from scipy.stats import norm
+import pandas as pd
+import numpy as np
+import matplotlib
+# psis comes from https://github.com/avehtari/PSIS/tree/master/py
+from psis import *
+
+# with out this, plots from matplotlib won't knit on windows
+matplotlib.use('TkAgg') 
+import matplotlib.pyplot as plt
+
+fig_size=(12,6)# parameters for figures throughout this assignment
+num_bins = 20 #
+font_size=15
+
+import pystan
+print("pystan version:", pystan.__version__)
+
+```
+
+## Data Preparation
+Before actually getting into any questions, we need to first look at the data together with its sample mean and variance.
+From the result, we can get an intuition that the mean quality of each machine could be somewhere near 90, but we may not draw a informative conclusion for variance
+```{python}
+data = pd.read_fwf('factory.txt', header=None).to_numpy()
+machines_transposed = data.T
+print(data) # each column contains the quality measurements of a machine 
+print(np.mean(data, axis=0)) # mean quality of each machine 
+print(np.var(data, axis=0)) # quality variance of each machine
+
+```
+
+## Hierarchical Stan Model 
+The stan code for this problem is specified in this block below.
+Note that in the generated quantities, we set the 7 machines together since we are using the hierarchical model. 
+After defining the stan model, we then load it with pystan and do sampling with it.
+```{python}
+stan_code_hierarchical = '''
+data {
+    int<lower=0> N;             // number of data points
+    int<lower=0> K;             // number of groups
+    int x[N];  // group indicator
+    vector[N] y;
+}
+parameters {
+    real mu0;                   // prior mean
+    real<lower=0> sigma0;       // prior std
+    vector[K] mu;               // group means
+    real<lower=0> sigma;        // common std
+}
+model {
+    // prior of hyper parameters
+    mu0 ~ normal(0, 100);
+    sigma0 ~ inv_chi_square(0.1);
+    // prior of mean 
+    mu ~ normal(mu0, sigma0);
+    // normal probability model
+    y ~ normal(mu[x], sigma);
+}
+generated quantities {
+    vector[K+1] ypred;
+    real mu7 = normal_rng(mu0, sigma0);
+    for (i in 1:K)
+        ypred[i] = normal_rng(mu[i], sigma);
+    ypred[K+1] = normal_rng(mu7, sigma);
+}
+'''
+
+#%% fitting data into the stan model
+model_hierarchical = pystan.StanModel(model_code=stan_code_hierarchical)
+data_hierarchical = dict(
+    N=machines_transposed.size,
+    K=6,
+    x=[
+        1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2,
+        3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4,
+        5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6,
+    ],
+    y=machines_transposed.flatten()
+)
+
+#%% sampling
+fit_hierarchical = model_hierarchical.sampling(data=data_hierarchical, n_jobs=-1)
+print(fit_hierarchical)
+
+```
+
+## Result Analysis and Decision
+With the fitting results from stan, we can easily calculate the utility factor of each machine.
+Actually, the utility factor could be understood as the mean profit of a product, and each machine will have its own mean.
+The printed vector is the utility factor of the 7 machines (from machine 1 to machine 7).
+```{python}
+ypred = fit_hierarchical.extract(permuted=True)['ypred']
+num_samples, num_machines = ypred.shape[0], ypred.shape[1]
+utility_factor = np.zeros(ypred.shape[1])
+
+for i in range(num_machines):
+    sold = np.sum(ypred[:, i] > 85)
+    trash = num_samples - sold 
+    utility_factor[i] = ((200-106)*sold - 106 * trash)/num_samples
+    
+print("The utility factor of the 7 machines are {}".format(utility_factor))
+```
+
+We can sort the utility factor of the first 6 machines and extract the estimated factor of the 7th.
+
+```{python}
+sort_idx = np.argsort(utility_factor[:6])
+for idx in sort_idx:
+    print("Machine {} utility {}".format(idx+1, utility_factor[idx]))
+    
+print("Machine {} utility {} (estimated)".format(7, utility_factor[6]))
+```
+
+Based on the results, we see that the utility factor of the first machine is negative, so it is not profitable.
+All other machines have positive utility factors, so they are all profitable.
+For the 7th machine, we have a positive estimation, so this machine is also profitable, and as a result, the company owner should consider buying a new machine.
