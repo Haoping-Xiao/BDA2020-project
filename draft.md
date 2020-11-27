@@ -1,33 +1,59 @@
-# 1. Project Introduction
-Road traffic and safety have become one of the major problems in people's safety concern. According to [WHO](https://www.who.int/publications/i/item/9789241565684), the annual road traffic deaths has reached 1.35 million in 2018, which makes road accident the leading killer of people aged from 5 to 29 years. In the UK, more than xxx traffic accidents have caused xxx casualties from 2005 to 2019. Understanding and projecting the trend of growth (decrease) about the number of traffic accidents, could raise the awareness of the general population and call for collaborative effort to address this problem.
+# BDA - Project
 
-In this project, we try to explore the Road Safety Data from the Department of Transport in the UK. The dataset accurately presents the time, location, police force, vehicles and number of citizens involved in every accident, and it is publicly available at https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data. We will try to capture the trend of accidental cases with a xxxx model, and provide statistical results in a Bayesian perspective. Concretely, we will study the accidents in the 6 representative areas: Metropolitan Police, Cumbria, Lancashire, Merseyside, Greater Manchester and Cheshire. 
+## 1. Project Introduction
+
+Road traffic and safety have become one of the major problems in people's safety concern. According to [WHO](https://www.who.int/publications/i/item/9789241565684), the annual road traffic deaths has reached 1.35 million in 2018, which makes road accident the leading killer of people aged from 5 to 29 years. In the UK, more than ==XXX== traffic accidents have caused ==XXX== casualties from 2005 to 2019. Understanding and projecting the trend of growth (decrease) about the number of traffic accidents, could raise the awareness of the general population and call for collaborative effort to address this problem.
+
+In this project, we try to explore the Road Safety Data from the Department of Transport in the UK. The dataset accurately presents the time, location, police force, vehicles and number of citizens involved in every accident, and it is publicly available at [Road Safety Data](https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data)   We will try to capture the trend of the number of cases in different areas with a ==XXX== model, and provide statistical results in a Bayesian perspective. Concretely, we study the number of accidents in 6 representative areas: Metropolitan Area, Cumbria, Lancashire, Merseyside, Greater Manchester and Cheshire. 
+
+The remaining contents of this report are structured as follows: Section 2 presents the process of data preprocessing and information extraction. It also provides an intuitive overview with the visualization of the elementary statistics. Section 3 introduces the probability models that we choose for this dataset, which includes a separate model, a pooled model and a hierarchical model. Section 4 discusses the fitting results of the three models and evaluates the quality of them based on convergence, cross validation and sensitivity. Finally, Section 5 draws a conclusion for our project and looks into possible methods and outcome of future work.
+
+## 2. Data Preprocess and Visualization
+
+Extract by police force area
+
+Normalize over different areas by [population](https://researchbriefings.files.parliament.uk/documents/SN00634/SN00634.pdf) in different police force area
+
+Normalize over time by population growth in UK? 
 
 
 
+In this section we will elaborate on the 
 
-# 2. Data Preprocess and Visualization
-
-
-
-
-# 3. Probability Models 
 Description, Visualization
 
-# 4. Results and Analysis
+## 3. Probability Models 
+
+justify the choice, give mathematical expression as well as stan code 
+
+### 3.1 Separate Model
+
+current year: $i$,  area number $j$
+
+每个地区有自己的参数alpha和beta， 然后年份从2005到2019年一共15个数据点
+$$
+y[i, j] \sim Normal (\alpha_j + \beta_j x[i], \sigma_j)
+$$
+
+
+### 3.2 Pooled Model
 
 
 
+### 3.3 Hierarchical Model
 
-# 5. Model evaluation
+
+
+## 4. Result Analysis and Model Evaluation
+
 (psis, loo, ks, HMC, sensitivity analysis)
 
 
-# 6. Conclusion and Future Work
+## 5. Conclusion and Future Work
 Discussion, findings and possible improvements
 
-# 7. Appendix: Codes and training logs
+## Appendix: Codes and training logs
 
 
-# 8. References
+## References
 
