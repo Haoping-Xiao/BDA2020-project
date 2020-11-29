@@ -42,15 +42,17 @@ model {
 }
 
 generated quantities{
-  //accident prediction in 2020 in different police force
-  
-  vector[N] pred=normal_rng(alpha+beta*(2020-2005),sigma);
-  
+  //log likelihood
   matrix[N,Y] log_lik;
+  //accident prediction in 2020 in different police force
+  vector[N] pred;
+  for(i in 1:N){
+    pred[i]=normal_rng(alpha+beta*(2020-2005),sigma);
+  }
+  
   for(i in 1:N){
     for(j in 1:Y){
       log_lik[i,j]=normal_lpdf(accidentData[i,j]|mu[j],sigma);
-      // accidentData[,j]~normal(mu[j],sigma);
     }
   }
   
