@@ -49,15 +49,16 @@ from pathlib import Path
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
-fig_size=(12,6)# parameters for figures throughout this assignment
-num_bins = 20 #
-font_size=15
+verbose=False
 
 import pystan
 print("pystan version:", pystan.__version__)
 
 ```
 
+# 2. Data Preprocessing and Visualization
+
+## 2.X Elementary Statistics
 ```{python}
 model_path = './Stan'
 data_file = './data/data.txt'
@@ -65,8 +66,8 @@ accident_data = np.loadtxt(data_file)
 print(accident_data.shape)
 mean_value = np.mean(accident_data) # mean value approximately 25 cases per 10,000 people
 # it's very un likely to change 50% of the mean, so 2.57*sigma = mean_value/2
-sigma = mean_value / (2*2.57) 
-sigma
+sigma_cand = mean_value / (2*2.57) 
+sigma_cand
 ```
 
 
@@ -86,31 +87,101 @@ for i in range(6):
     plt.plot(years, fitted_values, label=area_names[i])
 plt.legend()
 plt.show()
-
 ```
 
 
-### 3.3 Hierarchical Model
+
+# 3. Probability Models
+
+## 3.1 Separate Model
+
+In a separate model, we treat each district as an individual entity, and assign independent parameters to them. Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations:
+$$
+\begin{aligned}
+\alpha_i &\sim Normal(30, 20)\\
+\beta_i &\sim Normal(0, 4.85)\\
+\sigma_j &\sim uniform \\
+\mu_{i,j} &= \alpha_i + \beta_i * year[j] \\
+accident[i, j] &\sim Normal(\mu_{i,j}, \sigma_j)
+\end{aligned}
+$$
 
 ```{python}
-model_name = 'accident_hierarchical.stan'
-stan_model = pystan.StanModel(file=model_path + '/' + model_name)
-print(stan_model.model_code)
+separate_model_name = 'accident_separate.stan'
+separate_stan_model = pystan.StanModel(file=model_path + '/' + separate_model_name)
+print(separate_stan_model.model_code)
+```
+
+
+```{python}
+def test_stan_model(stan_model, data, verbose = False):   
+    data_for_stan = dict(
+        N = data.shape[0],
+        Y = data.shape[1],
+        accidentData = data,
+        years = np.arange(1, data.shape[1]+1), # stan index starts from 1
+        xpred=2020,
+        prior_choice=1
+    )
+    stan_results = stan_model.sampling(data=data_for_stan)
+    if verbose:
+        print(stan_results)
+    else:
+        print(stan_results.stansummary(pars=["alpha", "beta", "sigma"]))
+        
+    return stan_results
 ```
 
 ```{python}
-data_for_stan = dict(
-    N = accident_data.shape[0],
-    Y = accident_data.shape[1],
-    accidentData = accident_data,
-    years = np.arange(1, accident_data.shape[1]+1), # stan index starts from 1
-    xpred=2020,
-    prior_choice=1
-)
-stan_results = stan_model.sampling(data=data_for_stan)
-print(stan_results)
+separate_results = test_stan_model(separate_stan_model, accident_data, verbose=verbose)
 ```
 
+## 3.2 Pooled Model
+
+$$
+\begin{aligned}
+\alpha &\sim Normal(30, 20)\\
+\beta &\sim Normal(0, 4.85)\\
+\sigma_j &\sim uniform \\
+\mu_{j} &= \alpha + \beta * year[j] \\
+accident[:, j] &\sim Normal(\mu_{j}, \sigma_j)
+\end{aligned}
+$$
+
+
+```{python}
+pooled_model_name = 'accident_pooled.stan'
+pooled_stan_model = pystan.StanModel(file=model_path + '/' + pooled_model_name)
+print(pooled_stan_model.model_code)
+```
+
+
+```{python}
+pooled_results = test_stan_model(pooled_stan_model, accident_data, verbose=verbose)
+```
+
+
+## 3.3 Hierarchical Model
+
+```{python}
+hier_model_name = 'accident_hierarchical.stan'
+hier_stan_model = pystan.StanModel(file=model_path + '/' + hier_model_name)
+print(hier_stan_model.model_code)
+```
+
+```{python}
+hier_results = test_stan_model(hier_stan_model, accident_data, verbose=verbose)
+```
+
+
+# 4. Model Evaluation
+```{python}
+var_separate =["alpha", "beta", "sigma"] # the variables that need to be plotted
+var_pooled = ["alpha", "beta", "sigma"] 
+var_hier = ["alpha", "beta", "mu_alpha", "sigma_alpha", "mu_beta", "sigma_beta"]
+```
+
+## 4.1 Cross-Validation with PSIS-LOO
 ```{python}
 def get_psis_loo_result(stan_results):
     idata = az.from_pystan(stan_results, log_likelihood="log_lik")
@@ -118,93 +189,170 @@ def get_psis_loo_result(stan_results):
     print(loo_results)
     khats = loo_results.pareto_k
     az.plot_khat(khats, xlabels=True, annotate=True)
-
-get_psis_loo_result(stan_results)
+    plt.show()
 ```
+
+```{python}
+get_psis_loo_result(separate_results)
+```
+```{python}
+get_psis_loo_result(pooled_results)
+```
+```{python}
+get_psis_loo_result(hier_results)
+```
+
+## 4.2 Effective Sample Sizes
+
+need to know how to interprete these plots
+https://mc-stan.org/docs/2_25/reference-manual/effective-sample-size-section.html
+```{python}
+_ = az.plot_ess(
+    separate_results, var_names=var_separate, 
+    kind="local", marker="_", ms=20, mew=2, figsize=(20, 20)
+)
+plt.show()
+```
+
 
 ```{python}
 _ = az.plot_ess(
-    stan_results, var_names=["alpha", "beta", "sigma_alpha", "sigma_beta"], 
+    pooled_results, var_names=var_pooled, 
+    kind="local", marker="_", ms=20, mew=2, figsize=(20, 5)
+)
+plt.show()
+```
+
+
+```{python}
+_ = az.plot_ess(
+    hier_results, var_names=var_hier, 
     kind="local", marker="_", ms=20, mew=2, figsize=(20, 20)
 )
+plt.show()
 ```
 
+## 4.3 HMC Convergence Analysis
 ```{python}
-_ = az.plot_trace(stan_results, var_names = ["alpha", "beta", "sigma_alpha", "sigma_beta"], figsize=(20, 30))
-```
-
-```{python}
-h = stan_results.to_dataframe(diagnostics=True)
-print('max treedepth for draws: ', h['treedepth__'].max())
-print('min treedepth for draws: ', h['treedepth__'].min())
-print('mean treedepth for draws: ', h['treedepth__'].mean())
-print('divergent transitions: ', any(h['divergent__']))
+_ = az.plot_trace(separate_results, var_names = var_separate, figsize=(20, 30))
+plt.show()
 ```
 
 
 ```{python}
-plt.figure(figsize=(15,10))
-year_idx = np.arange(accident_data.shape[1])+1
-actual_years = year_idx + 2004
+_ = az.plot_trace(pooled_results, var_names = var_pooled, figsize=(20, 10))
+plt.show()
+```
 
-colors = ['red', 'pink', 'orange', 'gray', 'green', 'purple']
-for x in range(1, 7):
-    print()
-    for i in range(100):
-        y = stan_results["beta"][:, x-1][i] * year_idx + stan_results["alpha"][:, x-1][i]
-        _ = plt.plot(actual_years, y, color=colors[x-1], alpha=0.05)
-    
-for x in range(1, 7):
-    for j in reversed(range(1, 16)):
-        yrep = stan_results['yrep[{},{}]'.format(x, j)]
+
+```{python}
+_ = az.plot_trace(hier_results, var_names = var_hier, figsize=(20, 30))
+plt.show()
+```
+
+```{python}
+def get_treedepth(stan_results):    
+    h = stan_results.to_dataframe(diagnostics=True)
+    print('max treedepth for draws: ', h['treedepth__'].max())
+    print('min treedepth for draws: ', h['treedepth__'].min())
+    print('mean treedepth for draws: ', h['treedepth__'].mean())
+    print('divergent transitions: ', any(h['divergent__']))
+```
+
+```{python}
+get_treedepth(separate_results)
+get_treedepth(pooled_results)
+get_treedepth(hier_results)
+```
+
+
+## 4.4 Posterior Predictive Plot
+
+```{python}
+def plot_posterior_draws(stan_results, accident_data, pooled=False):    
+    plt.figure(figsize=(15,10))
+    year_idx = np.arange(accident_data.shape[1])+1
+    actual_years = year_idx + 2004
+
+    colors = ['red', 'cyan', 'orange', 'gray', 'green', 'purple']
+    for x in range(1, 7):
+        for i in range(100):
+            if pooled:
+                y = stan_results["beta"][i] * year_idx + stan_results["alpha"][i]
+            else:
+                y = stan_results["beta"][:, x-1][i] * year_idx + stan_results["alpha"][:, x-1][i]
+            _ = plt.plot(actual_years, y, color=colors[x-1], alpha=0.05)
+        if pooled:
+            break
+        
+
+    for x in range(1, 7):
+        for j in reversed(range(1, 16)):
+            yrep = stan_results['yrep[{},{}]'.format(x, j)]
+            _ = plt.errorbar(
+                x = actual_years[j-1], 
+                y = np.mean(yrep),
+                yerr=np.std(yrep), 
+                fmt='--o', zorder=i+j,
+                ecolor='black', capthick=2,
+                color='black',
+                alpha=0.5
+            )
+
+    for k in range(1, 7):
+        ypred = stan_results['pred[{}]'.format(k)]
         _ = plt.errorbar(
-            x = actual_years[j-1], 
-            y = np.mean(yrep),
-            yerr=np.std(yrep), 
-            fmt='--o', zorder=i+j,
-            ecolor='black', capthick=2,
-            color='black',
-            alpha=0.5
+            x = 2020, 
+            y = np.mean(ypred), 
+            yerr=np.std(ypred), 
+            fmt='--o', zorder=i+j+100,
+            ecolor='red', capthick=2,
+            color='red',
         )
 
-for k in range(1, 7):
-    ypred = stan_results['pred[{}]'.format(k)] 
-    _ = plt.errorbar(
-        x = 2020, 
-        y = np.mean(ypred), 
-        yerr=np.std(ypred), 
-        fmt='--o', zorder=i+j+100,
-        ecolor='red', capthick=2,
-        color='red',
-    )
+
+    _ = plt.scatter(np.tile(years, 6), accident_data.flatten(), zorder=j+i+100, edgecolors='black')
+    # _ = plt.scatter(data_for_stan["years"], data_for_stan["accidentData"], zorder=j+i+100, edgecolors='black')
+    _ = plt.title("Posterior predictive check")
+    _ = plt.legend(bbox_to_anchor=(1.05, 1), loc='lower left', borderaxespad=0.)
 
 
-_ = plt.scatter(np.tile(years, 6), accident_data.flatten(), zorder=j+i+100, edgecolors='black')
-# _ = plt.scatter(data_for_stan["years"], data_for_stan["accidentData"], zorder=j+i+100, edgecolors='black')
-_ = plt.title("Posterior predictive check")
-_ = plt.legend(bbox_to_anchor=(1.05, 1), loc='lower left', borderaxespad=0.)
+    # area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
+    #                'Merseyside','Greater Manchester','Cheshire']
 
+    custom_lines = [
+        Line2D([0], [0], color='red', lw=4, label='Metropolitan Police'),
+        Line2D([0], [0], color='cyan', lw=4, label='Cumbria'),
+        Line2D([0], [0], color='orange', lw=4, label='Lancashire'),
+        Line2D([0], [0], color='gray', lw=4, label='Merseyside'),
+        Line2D([0], [0], color='green', lw=4, label='Greater Manchester'),
+        Line2D([0], [0], color='purple', lw=4, label='Cheshire'),
+        Line2D([0], [0], marker='o', color='black', label='Original datapoint', markerfacecolor='b', markersize=15),
+        Line2D([0], [0], marker='o', color='red', label='Predictions 2020', markersize=15),
+        Line2D([0], [0], marker='o', color='black', label='Posterior samples', markersize=15),
+    ]
 
-# area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
-#                'Merseyside','Greater Manchester','Cheshire']
-
-custom_lines = [
-    Line2D([0], [0], color='red', lw=4, label='Metropolitan Police'),
-    Line2D([0], [0], color='yellow', lw=4, label='Cumbria'),
-    Line2D([0], [0], color='orange', lw=4, label='Lancashire'),
-    Line2D([0], [0], color='gray', lw=4, label='Merseyside'),
-    Line2D([0], [0], color='green', lw=4, label='Greater Manchester'),
-    Line2D([0], [0], color='purple', lw=4, label='Cheshire'),
-    Line2D([0], [0], marker='o', color='black', label='Original datapoint', markerfacecolor='b', markersize=15),
-    Line2D([0], [0], marker='o', color='red', label='Predictions 2020', markersize=15),
-    Line2D([0], [0], marker='o', color='black', label='Posterior samples', markersize=15),
-]
-
-_ = plt.legend(handles=custom_lines, bbox_to_anchor=(1, 1))
-_ = plt.xticks(np.arange(2005, 2021), fontsize=13)
-_ = plt.yticks(fontsize=14)
-
+    _ = plt.legend(handles=custom_lines, bbox_to_anchor=(1, 1))
+    _ = plt.xticks(np.arange(2005, 2021), fontsize=13)
+    _ = plt.yticks(fontsize=14)
+    plt.show()
 ```
+
+
+
+```{python}
+plot_posterior_draws(separate_results, accident_data)
+```
+
+```{python}
+plot_posterior_draws(pooled_results, accident_data, pooled=True)
+```
+
+```{python}
+plot_posterior_draws(hier_results, accident_data)
+```
+
+## 4.5 Prior Sensitivity Test
 
 ```{python}
 data_dict = dict()
@@ -223,24 +371,37 @@ for i in range(3):
 
 
 ```{python}
-result_dict = dict()
-for key, stan_data in data_dict.items():
-    print("Generating results with prior:{} {}".format(stan_data["prior_choice"], key))
-    sampling_result = stan_model.sampling(data=stan_data)
-    #print(sampling_result)
-    result_dict[key] = sampling_result
+def get_plot_forest(stan_model, data_dict, pooled=False):
+    if pooled:
+        figsize = (20, 20)
+    else:
+        figsize = (20, 5)
+    result_dict = dict()
+    for key, stan_data in data_dict.items():
+        print("Generating results with prior:{} {}".format(stan_data["prior_choice"], key))
+        sampling_result = stan_model.sampling(data=stan_data)
+        #print(sampling_result)
+        result_dict[key] = sampling_result
+    _ = az.plot_forest(
+    list(result_dict.values()), 
+    model_names=list(result_dict.keys()), var_names=["beta"], markersize=10,
+    kind='ridgeplot', ridgeplot_overlap=3, ridgeplot_alpha=0.3, r_hat=True, \
+        ess=True, figsize=(20, 20), textsize=20)
+    plt.rcParams['xtick.labelsize'] = 20
+    plt.rcParams['ytick.labelsize'] = 20
+    plt.show()
+```
+
+
+
+```{python}
+get_plot_forest(separate_stan_model, data_dict)
 ```
 
 ```{python}
-_ = az.plot_forest(
-    list(result_dict.values()), 
-    model_names=list(result_dict.keys()), var_names=["beta"], markersize=10,
-    kind='ridgeplot', ridgeplot_overlap=3, ridgeplot_alpha=0.3, r_hat=True, ess=True, figsize=(20, 20), textsize=20
-)
-plt.rcParams['xtick.labelsize'] = 20
-plt.rcParams['ytick.labelsize'] = 20
-plt.show()
+get_plot_forest(pooled_stan_model, data_dict, pooled=True)
 ```
 
-
-
+```{python}
+get_plot_forest(hier_stan_model, data_dict)
+```
