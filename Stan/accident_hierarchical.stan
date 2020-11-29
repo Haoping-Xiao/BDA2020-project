@@ -25,7 +25,8 @@ parameters {
   real<lower=0> sigma_beta;
   vector[N] alpha;
   vector[N] beta;
-  vector<lower=0>[N] sigma;
+  // vector<lower=0>[N] sigma;
+  real<lower=0> sigma;
 }
 
 
@@ -42,16 +43,16 @@ model {
     // bigger variance
     mu_alpha~normal(30,40);
     mu_beta~normal(0,10);
-    sigma_alpha~normal(10,10);
-    sigma_beta~normal(3,6);
+    //sigma_alpha~normal(10,10);
+    //sigma_beta~normal(3,6);
   } else if (prior_choice==2){
     // uniform prior
   } else {
     // default choice with moderate variance
     mu_alpha~normal(30,20);
     mu_beta~normal(0,4.85);
-    sigma_alpha~normal(10,5);
-    sigma_beta~normal(3,3);
+    //sigma_alpha~normal(10,5);
+    //sigma_beta~normal(3,3);
   }
 
   //for each police force
@@ -64,7 +65,8 @@ model {
   for(i in 1:N){
     //for each observed year
     for(j in 1:Y){
-     accidentData[i,j]~normal(mu[i,j],sigma[i]);
+     // accidentData[i,j]~normal(mu[i,j],sigma[i]); 
+     accidentData[i,j]~normal(mu[i,j],sigma); // share sigma
     }
   }
 }
@@ -80,15 +82,20 @@ generated quantities{
   //for each police force
   for(i in 1:N){
     // 2005 -> 1, 2006 -> 2, ..., 2020 -> 16 
-    pred[i]=normal_rng(alpha[i]+beta[i]*(xpred-2004),sigma[i]);
+    // pred[i]=normal_rng(alpha[i]+beta[i]*(xpred-2004),sigma[i]);
+    // share sigma
+    pred[i]=normal_rng(alpha[i]+beta[i]*(xpred-2004),sigma);
   }
   
   for(i in 1:N){
     for(j in 1:Y){
       // do posterior sampling and try to reproduce the original data
-      yrep[i,j]=normal_rng(mu[i,j],sigma[i]);
+      // yrep[i,j]=normal_rng(mu[i,j],sigma[i]);
+      yrep[i,j]=normal_rng(mu[i,j],sigma);
       // prepare log likelihood for PSIS-LOO 
-      log_lik[i,j]=normal_lpdf(accidentData[i,j]|mu[i,j],sigma[i]);
+      // log_lik[i,j]=normal_lpdf(accidentData[i,j]|mu[i,j],sigma[i]);
+      // share sigma
+      log_lik[i,j]=normal_lpdf(accidentData[i,j]|mu[i,j],sigma);
     }
   }
   
