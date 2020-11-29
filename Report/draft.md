@@ -37,9 +37,9 @@ Table1. Accident Rates per 10,000 people
 
 We also visualize our preprocessed data and fit data using least square method.
 
-![preprocessed_data](/Users/haopingxiao/Aalto/BayesianDataAnalysis/BDA2020-project/Figs/preprocessed_data.jpg)
+![preprocessed_data](../Figs/preprocessed_data.jpg)
 
-![fit_data](/Users/haopingxiao/Aalto/BayesianDataAnalysis/BDA2020-project/Figs/fit_data.jpg)
+![fit_data](../Figs/fit_data.jpg)
 
 > Normalize over time by population growth in UK? 
 >
