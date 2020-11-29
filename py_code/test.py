@@ -58,7 +58,7 @@ accident_data = np.loadtxt(data_file)
 # stan_model = pystan.StanModel(model_code=the_separate_model)
 
 
-data_for_separate = dict(
+data_for_stan = dict(
     N = accident_data.shape[0],
     Y = accident_data.shape[1],
     accidentData = accident_data,
@@ -68,7 +68,7 @@ data_for_separate = dict(
 model_name = 'accident_hierarchical.stan'
 stan_model = pystan.StanModel(file=model_path + '/' + model_name)
 print(stan_model.model_code)
-stan_results = stan_model.sampling(data=data_for_separate)
+stan_results = stan_model.sampling(data=data_for_stan)
 print(stan_results)
 idata = az.from_pystan(stan_results, log_likelihood="log_lik")
 loo = az.loo(idata)
