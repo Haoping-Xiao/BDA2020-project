@@ -1,0 +1,229 @@
+---
+title: "BDA - Project"
+author: "Anonymous"
+output: 
+  pdf_document: 
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+# This chunk sets echo = TRUE as default, that is print all code.
+# knitr::opts_chunk$set can be used to set other notebook generation options, too.
+# include=FALSE inside curly brackets makes this block not be included in the pdf.
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls()) # remove all output
+library(reticulate) # MUST BE INSTALLED via remotes::install_github("rstudio/reticulate")
+use_condaenv('bda')
+```
+
+# Decision Analysis for Factory Data
+
+This submission is completed in `python` with `pystan`.
+```{r, engine='python'}
+import numpy as np 
+import matplotlib.pyplot as plt 
+# with out this, plots from matplotlib won't knit on windows
+import matplotlib
+matplotlib.use('TkAgg') 
+import pystan
+import arviz as az
+from pathlib import Path
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
+
+fig_size=(12,6)# parameters for figures throughout this assignment
+num_bins = 20 #
+font_size=15
+
+import pystan
+print("pystan version:", pystan.__version__)
+
+```
+
+```{python}
+model_path = 'stan_models'
+data_file = 'data/data.txt'
+accident_data = np.loadtxt(data_file)
+print(accident_data.shape)
+mean_value = np.mean(accident_data) # mean value approximately 25 cases per 10,000 people
+# it's very un likely to change 50% of the mean, so 2.57*sigma = mean_value/2
+sigma = mean_value / (2*2.57) 
+sigma
+```
+
+
+```{python}
+area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
+               'Merseyside','Greater Manchester','Cheshire']
+```
+
+```{python}
+plt.figure(figsize=(12, 6));
+years = np.arange(2005, 2020, 1).astype(np.int)
+print(years.shape)
+for i in range(6):
+    plt.scatter(years, accident_data[i, :], marker='.', s=20)
+    fit = np.polyfit(years, accident_data[i, :], 1)
+    fitted_values = np.polyval(fit, years)
+    plt.plot(years, fitted_values, label=area_names[i])
+plt.legend()
+plt.show()
+
+```
+
+
+### 3.3 Hierarchical Model
+
+```{python}
+model_name = 'accident_hierarchical.stan'
+stan_model = pystan.StanModel(file=model_path + '/' + model_name)
+print(stan_model.model_code)
+```
+
+```{python}
+data_for_stan = dict(
+    N = accident_data.shape[0],
+    Y = accident_data.shape[1],
+    accidentData = accident_data,
+    years = np.arange(1, accident_data.shape[1]+1), # stan index starts from 1
+    xpred=2020,
+    prior_choice=1
+)
+stan_results = stan_model.sampling(data=data_for_stan)
+print(stan_results)
+```
+
+```{python}
+def get_psis_loo_result(stan_results):
+    idata = az.from_pystan(stan_results, log_likelihood="log_lik")
+    loo_results = az.loo(idata, pointwise=True)
+    print(loo_results)
+    khats = loo_results.pareto_k
+    az.plot_khat(khats, xlabels=True, annotate=True)
+
+get_psis_loo_result(stan_results)
+```
+
+```{python}
+_ = az.plot_ess(
+    stan_results, var_names=["alpha", "beta", "sigma_alpha", "sigma_beta"], 
+    kind="local", marker="_", ms=20, mew=2, figsize=(20, 20)
+)
+```
+
+```{python}
+_ = az.plot_trace(stan_results, var_names = ["alpha", "beta", "sigma_alpha", "sigma_beta"], figsize=(20, 30))
+```
+
+```{python}
+h = stan_results.to_dataframe(diagnostics=True)
+print('max treedepth for draws: ', h['treedepth__'].max())
+print('min treedepth for draws: ', h['treedepth__'].min())
+print('mean treedepth for draws: ', h['treedepth__'].mean())
+print('divergent transitions: ', any(h['divergent__']))
+```
+
+
+```{python}
+plt.figure(figsize=(15,10))
+year_idx = np.arange(accident_data.shape[1])+1
+actual_years = year_idx + 2004
+
+colors = ['red', 'pink', 'orange', 'gray', 'green', 'purple']
+for x in range(1, 7):
+    print()
+    for i in range(100):
+        y = stan_results["beta"][:, x-1][i] * year_idx + stan_results["alpha"][:, x-1][i]
+        _ = plt.plot(actual_years, y, color=colors[x-1], alpha=0.05)
+    
+for x in range(1, 7):
+    for j in reversed(range(1, 16)):
+        yrep = stan_results['yrep[{},{}]'.format(x, j)]
+        _ = plt.errorbar(
+            x = actual_years[j-1], 
+            y = np.mean(yrep),
+            yerr=np.std(yrep), 
+            fmt='--o', zorder=i+j,
+            ecolor='black', capthick=2,
+            color='black',
+            alpha=0.5
+        )
+
+for k in range(1, 7):
+    ypred = stan_results['pred[{}]'.format(k)] 
+    _ = plt.errorbar(
+        x = 2020, 
+        y = np.mean(ypred), 
+        yerr=np.std(ypred), 
+        fmt='--o', zorder=i+j+100,
+        ecolor='red', capthick=2,
+        color='red',
+    )
+
+
+_ = plt.scatter(np.tile(years, 6), accident_data.flatten(), zorder=j+i+100, edgecolors='black')
+# _ = plt.scatter(data_for_stan["years"], data_for_stan["accidentData"], zorder=j+i+100, edgecolors='black')
+_ = plt.title("Posterior predictive check")
+_ = plt.legend(bbox_to_anchor=(1.05, 1), loc='lower left', borderaxespad=0.)
+
+
+# area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
+#                'Merseyside','Greater Manchester','Cheshire']
+
+custom_lines = [
+    Line2D([0], [0], color='red', lw=4, label='Metropolitan Police'),
+    Line2D([0], [0], color='yellow', lw=4, label='Cumbria'),
+    Line2D([0], [0], color='orange', lw=4, label='Lancashire'),
+    Line2D([0], [0], color='gray', lw=4, label='Merseyside'),
+    Line2D([0], [0], color='green', lw=4, label='Greater Manchester'),
+    Line2D([0], [0], color='purple', lw=4, label='Cheshire'),
+    Line2D([0], [0], marker='o', color='black', label='Original datapoint', markerfacecolor='b', markersize=15),
+    Line2D([0], [0], marker='o', color='red', label='Predictions 2020', markersize=15),
+    Line2D([0], [0], marker='o', color='black', label='Posterior samples', markersize=15),
+]
+
+_ = plt.legend(handles=custom_lines, bbox_to_anchor=(1, 1))
+_ = plt.xticks(np.arange(2005, 2021), fontsize=13)
+_ = plt.yticks(fontsize=14)
+
+```
+
+```{python}
+data_dict = dict()
+names = ["default_prior", "uniform_prior", "bigger_variance"]
+for i in range(3):
+    current_stan_data = dict(
+        N = accident_data.shape[0],
+        Y = accident_data.shape[1],
+        accidentData = accident_data,
+        years = np.arange(1, accident_data.shape[1]+1), # stan index starts from 1
+        xpred=2020,
+        prior_choice= i+1
+    )
+    data_dict[names[i]] = current_stan_data
+```
+
+
+```{python}
+result_dict = dict()
+for key, stan_data in data_dict.items():
+    print("Generating results with prior:{} {}".format(stan_data["prior_choice"], key))
+    sampling_result = stan_model.sampling(data=stan_data)
+    #print(sampling_result)
+    result_dict[key] = sampling_result
+```
+
+```{python}
+_ = az.plot_forest(
+    list(result_dict.values()), 
+    model_names=list(result_dict.keys()), var_names=["beta"], markersize=10,
+    kind='ridgeplot', ridgeplot_overlap=3, ridgeplot_alpha=0.3, r_hat=True, ess=True, figsize=(20, 20), textsize=20
+)
+plt.rcParams['xtick.labelsize'] = 20
+plt.rcParams['ytick.labelsize'] = 20
+plt.show()
+```
+
+
+

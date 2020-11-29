@@ -11,8 +11,10 @@
 
 data {
   int<lower=0> N; // the number of police force
-  int<lower=0> Y; // the number of years has been studied
+  int<lower=0> Y; // the number of years has been studied, year 2005 corresponds to 1
   matrix[N,Y] accidentData;//accident data
+  int prior_choice; // choose different setup for prior distribution
+  int xpred; // year of prediction (actual year)
 }
 
 
@@ -36,10 +38,22 @@ transformed parameters{
 
 
 model {
-  mu_alpha~normal(30,20);
-  mu_beta~normal(-1,5);
-  sigma_alpha~normal(10,5);
-  sigma_beta~normal(3,3);
+  if (prior_choice==3){
+    // bigger variance
+    mu_alpha~normal(30,40);
+    mu_beta~normal(0,10);
+    sigma_alpha~normal(10,10);
+    sigma_beta~normal(3,6);
+  } else if (prior_choice==2){
+    // uniform prior
+  } else {
+    // default choice with moderate variance
+    mu_alpha~normal(30,20);
+    mu_beta~normal(0,4.85);
+    sigma_alpha~normal(10,5);
+    sigma_beta~normal(3,3);
+  }
+
   //for each police force
   for(i in 1:N){
     alpha[i]~normal(mu_alpha,sigma_alpha);
@@ -59,16 +73,21 @@ model {
 generated quantities{
   //log likelihood
   matrix[N,Y] log_lik;
+  matrix[N,Y] yrep;
   //accident prediction in 2020 in different police force
   vector[N] pred;
   
   //for each police force
   for(i in 1:N){
-    pred[i]=normal_rng(alpha[i]+beta[i]*(2020-2005),sigma[i]);
+    // 2005 -> 1, 2006 -> 2, ..., 2020 -> 16 
+    pred[i]=normal_rng(alpha[i]+beta[i]*(xpred-2004),sigma[i]);
   }
   
   for(i in 1:N){
     for(j in 1:Y){
+      // do posterior sampling and try to reproduce the original data
+      yrep[i,j]=normal_rng(mu[i,j],sigma[i]);
+      // prepare log likelihood for PSIS-LOO 
       log_lik[i,j]=normal_lpdf(accidentData[i,j]|mu[i,j],sigma[i]);
     }
   }
