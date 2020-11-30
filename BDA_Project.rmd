@@ -4,7 +4,7 @@ author: "Anonymous"
 output: 
   pdf_document: 
     toc: yes
-    toc_depth: 2
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -60,7 +60,7 @@ print("pystan version:", pystan.__version__)
 
 ## 2.X Elementary Statistics
 After preprocessing of the raw data, we could perform some elementary statistical analysis to obtain an intuitive grasp of the data.
-The data here summarizes the number of accidents in 6 areas from 2005 to 2019 (15 years in total)， therefore the processed data is a $6 \times 15$ matrix.
+The data here summarizes the number of accidents in 6 areas from 2005 to 2019 (15 years in total), therefore the processed data have size (6,15).
 ```{python}
 area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
                'Merseyside','Greater Manchester','Cheshire']
@@ -70,7 +70,7 @@ accident_data = np.loadtxt(data_file)
 print(accident_data.shape)
 ```
 
-First, we could calcualte the mean accident rate in each area, which turns out to be approximately $25$.
+First, we could calculate the mean accident rate in each area, which turns out to be approximately $25$.
 ```{python}
 # mean value approximately 25 cases per 10,000 people
 mean_value = np.mean(accident_data) 
@@ -109,7 +109,7 @@ sigma_cand
 Then, we build separate, pooled and hierarchical model to fit our data.
 
 ## 3.1 Separate Model
-In a separate model, we treat each district as an individual entity, and assign independent parameters to them. Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations:
+In a separate model, we treat each district as an individual entity, and assign independent parameters to them. Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations, where the prior choices are based on the analysis above.
 $$
 \begin{aligned}
 \alpha_i &\sim Normal(30, 20)\\
@@ -119,17 +119,22 @@ $$
 accident[i, j] &\sim Normal(\mu_{i,j}, \sigma_j)
 \end{aligned}
 $$
+Both the intercept and slope are modelled with a normal prior.
+From the linear least mean square fitting, we observe that the mean values are around 25, therefore we set the mean value of $\alpha$'s prior to a number nearby (30).
+Besides, we've kept the variance large to provide relatively weakly informative prior, because we observed large differences among the areas.
+The prior for $\beta$ centers around zero and has a variance at 4.85 as discussed above.
+
 
 Here we load the stan model and display its implementation.
 In our models, we set 2005 to year 1 since we don't have data before that year.
-Besides, we implemented three sets of priors for sensitivity analysis (Section 4.5) and prepared log likelihood for cross validation.
+Further, we implemented three sets of priors for sensitivity analysis (Section 4.5) and prepared log likelihood for cross validation.
 ```{python}
 separate_model_name = 'accident_separate.stan'
 separate_stan_model = pystan.StanModel(file=model_path + '/' + separate_model_name)
 print(separate_stan_model.model_code)
 ```
 
-We define a common function to test the three different stan models, and for simplicity we just report the estimated value of the key parameters $\alpha$, $\beta$ and $\sigma$.
+We define a common function to test the three different stan models, and for simplicity we just report the estimated values of the key parameters $\alpha$, $\beta$ and $\sigma$.
 ```{python}
 def test_stan_model(stan_model, data, verbose = False):   
     data_for_stan = dict(
@@ -156,7 +161,8 @@ separate_results = test_stan_model(separate_stan_model, accident_data, verbose=v
 ```
 
 ## 3.2 Pooled Model
-In the pooled model, all the 6 areas obeys the same normal distribution
+In the pooled model, all the 6 areas obeys the same normal distribution.
+The mathematical expression of this model can be specified by the following equations:
 $$
 \begin{aligned}
 \alpha &\sim Normal(30, 20)\\
@@ -166,15 +172,18 @@ $$
 accident[:, j] &\sim Normal(\mu_{j}, \sigma_j)
 \end{aligned}
 $$
+Note that for fair comparison of the models, we use the same prior as the separate model here.
 
-
+Again, we prepared three sets of priors for sensitivity checking.
 ```{python}
 pooled_model_name = 'accident_pooled.stan'
 pooled_stan_model = pystan.StanModel(file=model_path + '/' + pooled_model_name)
 print(pooled_stan_model.model_code)
 ```
 
-
+The summary for the pooled model is shown below.
+From the results, we could see that the value for $\alpha$ and $\beta$ is around the mean of the multiple $\alpha_i$ and $\beta_i$ above.
+However, the variance is larger than the separate model, since it has to cover different scenarios in all areas.
 ```{python}
 pooled_results = test_stan_model(pooled_stan_model, accident_data, verbose=verbose)
 ```
@@ -194,35 +203,38 @@ hier_results = test_stan_model(hier_stan_model, accident_data, verbose=verbose)
 
 
 # 4. Model Evaluation
+
+In this section, we would like to evaluate three models using convergence analysis, cross-validaton with PSIS-LOO, posterior predictive checking and prior sensitivity test.
 ```{python}
 vars2plot =["alpha", "beta", "sigma"] # the variables that need to be plotted
 ```
 
-## 4.1 Cross-Validation with PSIS-LOO
-```{python}
-def get_psis_loo_result(stan_results):
-    idata = az.from_pystan(stan_results, log_likelihood="log_lik")
-    loo_results = az.loo(idata, pointwise=True)
-    print(loo_results)
-    khats = loo_results.pareto_k
-    az.plot_khat(khats, xlabels=True, annotate=True, figsize=(12, 6))
-    plt.show()
-```
+## 4.1 Convergence Analysis
 
-```{python}
-get_psis_loo_result(separate_results)
-```
-```{python}
-get_psis_loo_result(pooled_results)
-```
-```{python}
-get_psis_loo_result(hier_results)
-```
+As the third section described, we use linear model for prediction, so in this section, we check the distribution of alpha, beta (which determines the mean value of normal distribution) and sigma (variance of normal distribution).
 
-## 4.2 Effective Sample Sizes
+### 4.1.1 Rhat value
+As we can see, the $\hat{R}$ of $\alpha$ and $\beta$ are fairly close to 1.
+The idea behind $\hat{R}$ is the law of total variance:
+$$
+  Var(X) = E[Var(X|Y)] + Var\left(E[X|Y]\right),
+$$
+where the first term means average variability within a chain ($W$), and the second means variability between chains ($B$).
+$\hat{R}$ is total variance divided by $W$ then take square root:
+$$
+  \hat{R} = \sqrt{\frac{N-1}{N}+\frac{1}{N}\frac{B}{W}} = \sqrt{1 + \frac{1}{N}(\frac{B}{W}-1)}
+$$
+From the expression we could see, if $N$ is large enough, $\hat{R}$ will converge to 1.
+If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored similar area in the distribution and they do not have much differences.
+If $B$ is much larger than $W$, $\hat{R}$ could be somewhat larger than 1, which means the chains are fairly different from each other and the exploration of the distribution is not enough.
 
-need to know how to interprete these plots
-https://mc-stan.org/docs/2_25/reference-manual/effective-sample-size-section.html
+### 4.1.2 Effective Sample Sizes
+In general, MCMC methods raises an issue that samples will be auto-correlated within a chain. 
+And effective sample size(ESS) is thus used to check if a sample was simple random sample. 
+To evaluate the convergence of our models, we comply with such a rule: the higher the effective sample size, the more likely the chains for the draws have converged. 
+As [1](https://www.displayr.com/what-is-effective-sample-size/) stated, ESS should be at least 100 times the number of chains. 
+Therefore, we plot the following figures: the dotted line represents 100*n_chains (We train 4 chains in practice). 
+We can firmly conclude our model has converged since all ESS values obviously are over the dotted line.
 ```{python}
 _ = az.plot_ess(
     separate_results, var_names=vars2plot, 
@@ -248,22 +260,10 @@ _ = az.plot_ess(
 )
 plt.show()
 ```
-
-## 4.3 HMC Convergence Analysis
-As we can see, the $\hat{R}$ of $\alpha$ and $\beta$ are fairly close to 1.
-The idea behind $\hat{R}$ is the law of total variance:
-$$
-  Var(X) = E[Var(X|Y)] + Var\left(E[X|Y]\right),
-$$
-where the first term means average variability within a chain ($W$), and the second means variability between chains ($B$).
-$\hat{R}$ is total variance divided by $W$ then take square root:
-$$
-  \hat{R} = \sqrt{\frac{N-1}{N}+\frac{1}{N}\frac{B}{W}} = \sqrt{1 + \frac{1}{N}(\frac{B}{W}-1)}
-$$
-From the expression we could see, if $N$ is large enough, $\hat{R}$ will converge to 1.
-If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored similar area in the distribution and they do not have much differences.
-If $B$ is much larger than $W$, $\hat{R}$ could be somewhat larger than 1, which means the chains are fairly different from each other and the exploration of the distribution is not enough.
-
+### 4.1.3 Chains Analysis
+We also plot all chains in the sampling process. 
+As figures shown, all chains are fluctuated at a small range, and they are also overlapping. 
+Therefore, these chains have converged and traced out a common distribution.
 ```{python}
 _ = az.plot_trace(separate_results, var_names = vars2plot, figsize=(20, 30))
 plt.show()
@@ -275,11 +275,17 @@ _ = az.plot_trace(pooled_results, var_names = vars2plot, figsize=(20, 10))
 plt.show()
 ```
 
-
 ```{python}
 _ = az.plot_trace(hier_results, var_names = vars2plot, figsize=(20, 30))
 plt.show()
 ```
+
+### 4.1.4 HMC/NUTS
+
+"The validity of the estimates is not guaranteed if there are post-warmup divergences."[2](https://mc-stan.org/misc/warnings.html)
+To avoid divergent transitions, we firstly check out the maximum treedepth for draws and increase treedepth parameter in the training process. 
+Secondly, we evaluate if our training process produces any divergent transitions. 
+Results shown below also prove our models are convergent.
 
 ```{python}
 def get_treedepth(stan_results):    
@@ -287,6 +293,7 @@ def get_treedepth(stan_results):
     print('max treedepth for draws: ', h['treedepth__'].max())
     print('min treedepth for draws: ', h['treedepth__'].min())
     print('mean treedepth for draws: ', h['treedepth__'].mean())
+    print('treedepth quantiles:\n', h['treedepth__'].quantile([0, 0.25, 0.5, 0.75, 1]))
     print('divergent transitions: ', any(h['divergent__']))
 ```
 
@@ -297,7 +304,53 @@ get_treedepth(hier_results)
 ```
 
 
-## 4.4 Posterior Predictive Plot
+## 4.2 Cross-Validation with PSIS-LOO
+In order to assess the predictive performance of the separate, pooled and hierarchical Guassian model, we uses leave-one-out cross-validation to evaluate.
+
+```{python}
+def get_psis_loo_result(stan_results):
+    idata = az.from_pystan(stan_results, log_likelihood="log_lik")
+    loo_results = az.loo(idata, pointwise=True)
+    print(loo_results)
+    khats = loo_results.pareto_k
+    az.plot_khat(khats, xlabels=True, annotate=True, figsize=(12, 6))
+    plt.show()
+```
+
+```{python}
+get_psis_loo_result(separate_results)
+```
+```{python}
+get_psis_loo_result(pooled_results)
+```
+```{python}
+get_psis_loo_result(hier_results)
+```
+
+
+As the results shown above, separate model is the best model since it has the largest elpd_loo value. 
+By contrast, the pooled model with the smallest elpd_loo estimate is the worst model. 
+The hierarchical model has a slightly lower elpd_loo value than the one of separate model.
+
+However, for the separate model, there are 2 out of 90 pareto k diagnostic values are very bad, which marginally increase unreliability of the separate model. 
+This mainly result from some highly influential observations in Great Manchester. As for the hierarchical model,
+ with a little sacrifice on elpd_loo value, its all k diagnostic values are lower than 0.7.
+
+In this section, we can conclude the pooled model is the worst model. 
+But there is a trade-off between performance and reliability for separate model and hierarchical model. 
+We will further compare these two models in following sections.
+
+
+## 4.3 Posterior Predictive Check
+In this subsection, we will check posterior predictive distribution for 2020. 
+In figures shown below, lines are drawn with different slopes and intercepts based on posterior distributions. 
+Lines in different colors represents different police force areas. 
+Blue, red and black points denote original data points, prediction number in 2020 and posterior samples respectively. 
+At last, vertical lines indicates posterior and prediction variance.
+We can visually compare three models based on these three plots. For the pooled model, posterior samples in each areas are extremely close and far away with original data points. 
+In addition, the variance of prediction is large. For the separate model and hierarchical model, their performance is hard to visually distinguish. 
+However, we can conclude that they are promising because their posterior samples in each area are close to original data points and the variance of prediction is small. 
+To further compare these two models, we need quantitative evaluation, which will be introduced in the following section.
 
 ```{python}
 def plot_posterior_draws(stan_results, accident_data, pooled=False):    
@@ -347,10 +400,6 @@ def plot_posterior_draws(stan_results, accident_data, pooled=False):
     _ = plt.title("Posterior predictive check")
     _ = plt.legend(bbox_to_anchor=(1.05, 1), loc='lower left', borderaxespad=0.)
 
-
-    # area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
-    #                'Merseyside','Greater Manchester','Cheshire']
-
     custom_lines = [
         Line2D([0], [0], color='red', lw=4, label='Metropolitan Police'),
         Line2D([0], [0], color='cyan', lw=4, label='Cumbria'),
@@ -376,14 +425,26 @@ plot_posterior_draws(separate_results, accident_data)
 ```
 
 ```{python}
+az.r2_score(accident_data, separate_results["yrep"])
+```
+
+```{python}
 plot_posterior_draws(pooled_results, accident_data, pooled=True)
+```
+
+```{python}
+az.r2_score(accident_data, pooled_results["yrep"])
 ```
 
 ```{python}
 plot_posterior_draws(hier_results, accident_data)
 ```
 
-## 4.5 Prior Sensitivity Test
+```{python}
+az.r2_score(accident_data, hier_results["yrep"])
+```
+
+## 4.4 Prior Sensitivity Test
 
 ```{python}
 data_dict = dict()
