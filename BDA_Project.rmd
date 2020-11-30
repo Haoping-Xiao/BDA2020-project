@@ -27,7 +27,7 @@ Therefore, understanding and projecting the trend of growth (decrease) about the
 In this project, we try to explore the `Road Safety Data` from the Department of Transport in the UK. 
 The dataset accurately presents the time, location, police force, vehicles and number of citizens involved in every accident, and it is publicly available at [Road Safety Data](https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data). 
 We will try to capture the trend of the number of cases in different areas using a normal model with linear mean, and provide statistical results in a Bayesian perspective. 
-Concretely, we study the number of accidents in 6 representative areas: Metropolitan Area, Cumbria, Lancashire, Merseyside, Greater Manchester and Cheshire. 
+Concretely, we study the number of accidents in 6 areas: Metropolitan Area (London), Cumbria, Lancashire, Merseyside, Greater Manchester and Cheshire. 
 
 The remaining contents of this report are structured as follows: 
 Section 2 presents the process of data pre-processing and information extraction. 
@@ -59,27 +59,29 @@ print("pystan version:", pystan.__version__)
 # 2. Data Preprocessing and Visualization
 
 ## 2.X Elementary Statistics
+After preprocessing of the raw data, we could perform some elementary statistical analysis to obtain an intuitive grasp of the data.
+The data here summarizes the number of accidents in 6 areas from 2005 to 2019 (15 years in total)， therefore the processed data is a $6 \times 15$ matrix.
 ```{python}
+area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
+               'Merseyside','Greater Manchester','Cheshire']
 model_path = './Stan'
 data_file = './data/data.txt'
 accident_data = np.loadtxt(data_file)
 print(accident_data.shape)
-mean_value = np.mean(accident_data) # mean value approximately 25 cases per 10,000 people
-# it's very un likely to change 50% of the mean, so 2.57*sigma = mean_value/2
-sigma_cand = mean_value / (2*2.57) 
-sigma_cand
 ```
 
-
+First, we could calcualte the mean accident rate in each area, which turns out to be approximately $25$.
 ```{python}
-area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
-               'Merseyside','Greater Manchester','Cheshire']
+# mean value approximately 25 cases per 10,000 people
+mean_value = np.mean(accident_data) 
+mean_value
 ```
 
+Then, we fit a simple linear model with least mean square method to the data points.
+From the results, we could see that the number of cases in the Metropolitan Police area has been increasing slowly, while the  cases in the other five police areas have been decreasing with similar trends.
 ```{python}
 plt.figure(figsize=(12, 6));
 years = np.arange(2005, 2020, 1).astype(np.int)
-print(years.shape)
 for i in range(6):
     plt.scatter(years, accident_data[i, :], marker='.', s=20)
     fit = np.polyfit(years, accident_data[i, :], 1)
@@ -92,27 +94,42 @@ plt.show()
 
 
 # 3. Probability Models
+For this dataset, we use nomal probability models with linear mean, which could be generally written as:
+\begin{equation}
+accidents \sim Normal(\alpha + \beta * year, \sigma)
+\end{equation}
+Intuitively, it is very unlikely that the accident rate change by 50% of the mean (approximately 25), so we could choose the variance of the slope $\beta$ in the linear mean.
+From a standard normal distribution table, we've found that $-2.57$ corresponds to $0.5%$ in the normal CDF, therefore the interval $[-2.57\sigma, 2.57\sigma]$ contains $99%$ of the probability mass.
+Based on these facts, we could use $2.57 \sigma = 0.5mean$ to find a candidate for variance of the slope, and the results is 4.85.
+```{python}
+# it's very un likely to change 50% of the mean, so 2.57*sigma = mean_value/2
+sigma_cand = mean_value / (2*2.57) 
+sigma_cand
+```
+Then, we build separate, pooled and hierarchical model to fit our data.
 
 ## 3.1 Separate Model
-
 In a separate model, we treat each district as an individual entity, and assign independent parameters to them. Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations:
 $$
 \begin{aligned}
 \alpha_i &\sim Normal(30, 20)\\
 \beta_i &\sim Normal(0, 4.85)\\
 \sigma_j &\sim uniform \\
-\mu_{i,j} &= \alpha_i + \beta_i * year[j] \\
+\mu_{i,j} &= \alpha_i + \beta_i * year_j \\
 accident[i, j] &\sim Normal(\mu_{i,j}, \sigma_j)
 \end{aligned}
 $$
 
+Here we load the stan model and display its implementation.
+In our models, we set 2005 to year 1 since we don't have data before that year.
+Besides, we implemented three sets of priors for sensitivity analysis (Section 4.5) and prepared log likelihood for cross validation.
 ```{python}
 separate_model_name = 'accident_separate.stan'
 separate_stan_model = pystan.StanModel(file=model_path + '/' + separate_model_name)
 print(separate_stan_model.model_code)
 ```
 
-
+We define a common function to test the three different stan models, and for simplicity we just report the estimated value of the key parameters $\alpha$, $\beta$ and $\sigma$.
 ```{python}
 def test_stan_model(stan_model, data, verbose = False):   
     data_for_stan = dict(
@@ -132,18 +149,20 @@ def test_stan_model(stan_model, data, verbose = False):
     return stan_results
 ```
 
+From the summary by stan, we could see that the accident rate in Metropolitan Area has slightly increased in these years, but all the other five areas have witnessed a decrease in accident rate.
+In this part, the fitted model agrees with our intuition and elementary statistical results.
 ```{python}
 separate_results = test_stan_model(separate_stan_model, accident_data, verbose=verbose)
 ```
 
 ## 3.2 Pooled Model
-
+In the pooled model, all the 6 areas obeys the same normal distribution
 $$
 \begin{aligned}
 \alpha &\sim Normal(30, 20)\\
 \beta &\sim Normal(0, 4.85)\\
 \sigma_j &\sim uniform \\
-\mu_{j} &= \alpha + \beta * year[j] \\
+\mu_{j} &= \alpha + \beta * year_j \\
 accident[:, j] &\sim Normal(\mu_{j}, \sigma_j)
 \end{aligned}
 $$
@@ -176,9 +195,7 @@ hier_results = test_stan_model(hier_stan_model, accident_data, verbose=verbose)
 
 # 4. Model Evaluation
 ```{python}
-var_separate =["alpha", "beta", "sigma"] # the variables that need to be plotted
-var_pooled = ["alpha", "beta", "sigma"] 
-var_hier = ["alpha", "beta", "mu_alpha", "sigma_alpha", "mu_beta", "sigma_beta"]
+vars2plot =["alpha", "beta", "sigma"] # the variables that need to be plotted
 ```
 
 ## 4.1 Cross-Validation with PSIS-LOO
@@ -188,7 +205,7 @@ def get_psis_loo_result(stan_results):
     loo_results = az.loo(idata, pointwise=True)
     print(loo_results)
     khats = loo_results.pareto_k
-    az.plot_khat(khats, xlabels=True, annotate=True)
+    az.plot_khat(khats, xlabels=True, annotate=True, figsize=(12, 6))
     plt.show()
 ```
 
@@ -208,7 +225,7 @@ need to know how to interprete these plots
 https://mc-stan.org/docs/2_25/reference-manual/effective-sample-size-section.html
 ```{python}
 _ = az.plot_ess(
-    separate_results, var_names=var_separate, 
+    separate_results, var_names=vars2plot, 
     kind="local", marker="_", ms=20, mew=2, figsize=(20, 20)
 )
 plt.show()
@@ -217,7 +234,7 @@ plt.show()
 
 ```{python}
 _ = az.plot_ess(
-    pooled_results, var_names=var_pooled, 
+    pooled_results, var_names=vars2plot, 
     kind="local", marker="_", ms=20, mew=2, figsize=(20, 5)
 )
 plt.show()
@@ -226,27 +243,41 @@ plt.show()
 
 ```{python}
 _ = az.plot_ess(
-    hier_results, var_names=var_hier, 
+    hier_results, var_names=vars2plot, 
     kind="local", marker="_", ms=20, mew=2, figsize=(20, 20)
 )
 plt.show()
 ```
 
 ## 4.3 HMC Convergence Analysis
+As we can see, the $\hat{R}$ of $\alpha$ and $\beta$ are fairly close to 1.
+The idea behind $\hat{R}$ is the law of total variance:
+$$
+  Var(X) = E[Var(X|Y)] + Var\left(E[X|Y]\right),
+$$
+where the first term means average variability within a chain ($W$), and the second means variability between chains ($B$).
+$\hat{R}$ is total variance divided by $W$ then take square root:
+$$
+  \hat{R} = \sqrt{\frac{N-1}{N}+\frac{1}{N}\frac{B}{W}} = \sqrt{1 + \frac{1}{N}(\frac{B}{W}-1)}
+$$
+From the expression we could see, if $N$ is large enough, $\hat{R}$ will converge to 1.
+If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored similar area in the distribution and they do not have much differences.
+If $B$ is much larger than $W$, $\hat{R}$ could be somewhat larger than 1, which means the chains are fairly different from each other and the exploration of the distribution is not enough.
+
 ```{python}
-_ = az.plot_trace(separate_results, var_names = var_separate, figsize=(20, 30))
+_ = az.plot_trace(separate_results, var_names = vars2plot, figsize=(20, 30))
 plt.show()
 ```
 
 
 ```{python}
-_ = az.plot_trace(pooled_results, var_names = var_pooled, figsize=(20, 10))
+_ = az.plot_trace(pooled_results, var_names = vars2plot, figsize=(20, 10))
 plt.show()
 ```
 
 
 ```{python}
-_ = az.plot_trace(hier_results, var_names = var_hier, figsize=(20, 30))
+_ = az.plot_trace(hier_results, var_names = vars2plot, figsize=(20, 30))
 plt.show()
 ```
 
@@ -373,9 +404,9 @@ for i in range(3):
 ```{python}
 def get_plot_forest(stan_model, data_dict, pooled=False):
     if pooled:
-        figsize = (20, 20)
-    else:
         figsize = (20, 5)
+    else:
+        figsize = (20, 20)
     result_dict = dict()
     for key, stan_data in data_dict.items():
         print("Generating results with prior:{} {}".format(stan_data["prior_choice"], key))
@@ -386,7 +417,7 @@ def get_plot_forest(stan_model, data_dict, pooled=False):
     list(result_dict.values()), 
     model_names=list(result_dict.keys()), var_names=["beta"], markersize=10,
     kind='ridgeplot', ridgeplot_overlap=3, ridgeplot_alpha=0.3, r_hat=True, \
-        ess=True, figsize=(20, 20), textsize=20)
+        ess=True, figsize=figsize, textsize=20)
     plt.rcParams['xtick.labelsize'] = 20
     plt.rcParams['ytick.labelsize'] = 20
     plt.show()
@@ -405,3 +436,10 @@ get_plot_forest(pooled_stan_model, data_dict, pooled=True)
 ```{python}
 get_plot_forest(hier_stan_model, data_dict)
 ```
+
+# 5. Conclusion and Future Work
+
+# Appendix
+
+# References
+
