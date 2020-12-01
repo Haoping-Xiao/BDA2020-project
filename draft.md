@@ -81,6 +81,8 @@ $$
 ## 5. Conclusion and Future Work
 Discussion, findings and possible improvements
 
+Based on the fitting result of our models, we can conclude 大部分地区,斜率小于0 => rate 下降,除了什么地区除外. 这个地区应当注意,采取必要的措施.在2020年预测中,哪个地区应当注意,因为他有最大的事故率,乘以人口,哪个地区应当注意,它的事故数为XX(是否突破峰值).
+
 ## Appendix: Codes and training logs
 
 
