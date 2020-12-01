@@ -19,22 +19,22 @@ use_condaenv('bda')
 
 # 1. Project Introduction
 
-Road traffic and safety have become one of the major problems in people's safety concern. 
-According to [WHO](https://www.who.int/publications/i/item/9789241565684), the annual road traffic deaths has reached 1.35 million in 2018, which makes road accident the leading killer of people aged from 5 to 29. 
-In the UK, traffic accidents has caused more than 1700 deaths and more than 150,000 injuries in 2019 alone [source](https://www.racfoundation.org/motoring-faqs/safety#a1). 
-Therefore, understanding and projecting the trend of growth (decrease) about the number of traffic accidents, could raise the awareness of the general population and call for collaborative effort to address this problem.
+Road traffic and safety have become one of the major problems in people's safety concerns. 
+According to [1](https://www.who.int/publications/i/item/9789241565684), the annual road traffic deaths has reached 1.35 million in 2018, which makes road accident the leading killer of people aged from 5 to 29. 
+In the UK, traffic accidents have caused more than 1700 deaths and more than 150,000 injuries in 2019 alone [2](https://www.racfoundation.org/motoring-faqs/safety#a1). 
+Therefore, understanding and projecting the trend of growth (decrease) in the rate of traffic accidents, could raise the awareness of the general population and call for a collaborative effort to address this problem.
 
 In this project, we try to explore the `Road Safety Data` from the Department of Transport in the UK. 
-The dataset accurately presents the time, location, police force, vehicles and number of citizens involved in every accident, and it is publicly available at [Road Safety Data](https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data). 
-We will try to capture the trend of the number of cases in different areas using a normal model with linear mean, and provide statistical results in a Bayesian perspective. 
+The dataset accurately presents the time, location, police force, vehicles and number of citizens involved in every accident, and it is publicly available at [3](https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data). 
+We will try to capture the trend of the number of cases in different areas using a normal model with linear mean, and provide statistical results from a Bayesian perspective. 
 Concretely, we study the number of accidents in 6 areas: Metropolitan Area (London), Cumbria, Lancashire, Merseyside, Greater Manchester and Cheshire. 
 
 The remaining contents of this report are structured as follows: 
 Section 2 presents the process of data pre-processing and information extraction. 
-It also provides an intuitive overview with the visualization of the elementary statistics. 
+It also provides an intuitive overview of the visualization of elementary statistics. 
 Section 3 introduces and tests the probability models that we choose for this dataset, which includes a separate model, a pooled model and a hierarchical model.
-Section 4 discusses the fitting results of the three models and evaluates the quality of them based on convergence, cross validation and sensitivity. 
-Finally, Section 5 draws a conclusion for our project and looks into possible methods and outcome of future work.
+Section 4 discusses the fitting results of the three models and evaluates the performance based on convergence, cross-validation, posterior prediction and sensitivity. 
+Finally, Section 5 draws a conclusion for our project and looks into possible methods and future work.
 This submission is completed in `python` with `pystan`.
 
 ```{r, engine='python'}
@@ -60,16 +60,23 @@ print("pystan version:", pystan.__version__)
 # 2. Data Description
 
 ## 2.1 Data Preprocess
-As the first section described, Road Satety Data contains millions of car accident records from 2005 to 2019 in UK. Those records contains much information irrelevant to our goal such as number of vehicles, speed limit, light conditions and many other factors. In addition, the records provide no information on the number of accidents per year directly. Luckily, it is still possible to obtain our interested data by counting car accident records in which dates are the same year. However, there is an extensive difference on the number of car accidents which mainly results from tremendous difference on population. This difference hinders fair comparison on traffic management system in different areas. To eliminate this negative effect,  we perform data normalization, which is  dividing the number of car accidents by the population in each area. Although Road Satety Data does not provide population information, we eventually find `public population information` via UK parkiament.
+As the first section described, Road Safety Data contains millions of car accident records from 2005 to 2019 in the UK. 
+Those records contain much information irrelevant to our goals such as the number of vehicles, speed limit, light conditions and many other factors. 
+In addition, the records provide no information on the number of accidents per year directly. 
+Fortunately, it is possible to obtain our interested data by counting car accident records in which dates are the same year. 
+However, there is an extensive difference in the number of car accidents which mainly results from the tremendous difference in population. 
+This difference hinders fair comparison of traffic management systems in different areas. 
+To eliminate this negative effect,  we perform data normalization, which is dividing the number of car accidents by the population in each area. 
+Although Road Safety Data does not provide population information, we eventually find `public population information` via UK parliament.
 
 To sum up:
 
-1. Extract two columns from the original data, including "date" and "police force". Date shows the date of one accident and police force indicates the responsible police office of the accident spot.
+1. Extract two columns from the original data, including "date" and "police force". Date shows the date of one accident and the police force indicates the responsible police office of the accident spot.
 2. Count the number of records per police force area in each year(2005-2019).
 3. Calculate accident rates per 10,000 people.
 
 ## 2.2 Data Visualization
-After preprocessing of the raw data, we could perform some elementary statistical analysis to obtain an intuitive grasp of the data.
+After preprocessing the raw data, we could perform some elementary statistical analysis to obtain an intuitive grasp of the data.
 The data here summarizes the number of accidents in 6 areas from 2005 to 2019 (15 years in total), therefore the processed data have size (6,15).
 ```{python}
 model_path = './Stan'
@@ -82,6 +89,7 @@ The processed data are shown as follows:
 ```{python}
 area_names = ["MetroPolice", 'Cumbria','Lancashire',
                'Merseyside','GManchest','Cheshire']
+# region population 2020 [8961989,500012,1508941,1429910,2835686,1066647]
 years = np.arange(2005, 2020, 1).astype(np.int)
 df = pd.DataFrame(accident_data, index=area_names, columns=years)
 # print(df.to_markdown())
@@ -96,6 +104,18 @@ df = pd.DataFrame(accident_data, index=area_names, columns=years)
 | GManchest  |  32.52 |  29.72 |  26.94 |  25.2  |  22.96 |  19.2  |  18.08 |  15.44 |  13.62 |  14.12 |  10.84 |  10.25 |  14.35 |  13.27 |  12.77 |
 | Cheshire            |  36.89 |  34.59 |  33.23 |  31.09 |  30.66 |  28.29 |  27.42 |  26.48 |  24.01 |  25.06 |  21.77 |  22.22 |  20.72 |  19.02 |  16.21 |
 
+We could also plot these data points, and from this figure, we could see that the trends in some areas are not very close to linear variation.
+
+```{python}
+plt.figure(figsize=(12, 6))
+for i in range(6):
+    plt.plot(years,accident_data[i],marker='.', label=area_names[i])
+plt.legend()
+plt.title('Preprocessed Data')
+plt.xlabel('year')
+plt.ylabel('accident rates per 10,000 people')
+plt.show()
+```
 
 The following elementary statistics could also help us gain some insights into the data.
 Greater Manchester has the lowest mean accident rate, while Cumbria has the highest mean.
@@ -115,35 +135,39 @@ Notably, the average accident rates in Metropolitan Police and Lancashire are fa
 | max   |                 29.84 |     38    |        36.39 |        34.26 |                32.52 |      36.89 |
 
 Also, we could calculate the mean accident rate in each area, which turns out to be approximately $25$.
+This mean vlaue also provides justification for our choice of variance in the probability model (Section 3).
 ```{python}
 # mean value approximately 25 cases per 10,000 people
 mean_value = np.mean(accident_data) 
 mean_value
 ```
 
-Then, we fit a simple linear model with least mean square method to the data points.
+Then, we fit a simple linear model with the least mean square method to the data points.
 From the results, we could see that the number of cases in the Metropolitan Police area has been increasing slowly, while the  cases in the other five police areas have been decreasing with similar trends.
 ```{python}
-plt.figure(figsize=(12, 6));
+plt.figure(figsize=(12, 6))
 for i in range(6):
     plt.scatter(years, accident_data[i, :], marker='.', s=20)
     fit = np.polyfit(years, accident_data[i, :], 1)
     fitted_values = np.polyval(fit, years)
     plt.plot(years, fitted_values, label=area_names[i])
 plt.legend()
+plt.title('Least squares polynomial fit to data')
+plt.xlabel('year')
+plt.ylabel('accident rates per 10,000 people')
 plt.show()
 ```
 
 
 
 # 3. Probability Models
-For this dataset, we use nomal probability models with linear mean, which could be generally written as:
+For this dataset, we use normal probability models with linear mean, which could be generally written as:
 \begin{equation}
 accidents \sim Normal(\alpha + \beta * year, \sigma)
 \end{equation}
 Intuitively, it is very unlikely that the accident rate change by 50% of the mean (approximately 25), so we could choose the variance of the slope $\beta$ in the linear mean.
-From a standard normal distribution table, we've found that $-2.57$ corresponds to $0.5%$ in the normal CDF, therefore the interval $[-2.57\sigma, 2.57\sigma]$ contains $99%$ of the probability mass.
-Based on these facts, we could use $2.57 \sigma = 0.5mean$ to find a candidate for variance of the slope, and the results is 4.85.
+From a standard normal distribution table, we've found that $-2.57$ corresponds to $0.5%$ in the normal CDF, therefore the interval $[-2.57\sigma, 2.57\sigma]$ contains 99% of the probability mass.
+Based on these assumptions, we could use $2.57 \sigma = mean/2$ to find a candidate for variance of the slope, and the results is about 4.85.
 ```{python}
 # it's very un likely to change 50% of the mean, so 2.57*sigma = mean_value/2
 sigma_cand = mean_value / (2*2.57) 
@@ -152,8 +176,10 @@ sigma_cand
 Then, we build separate, pooled and hierarchical model to fit our data.
 
 ## 3.1 Separate Model
-In a separate model, we treat each district as an individual entity, and assign independent parameters to them. 
-Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations, where the prior choices are based on the analysis above.
+In a separate model, we treat each district as an individual entity and assign independent parameters to them. 
+Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area and make the mean vary linearly with respect to years. 
+But each district will have a constant variance across all 15 years. 
+The mathematical expression for the separate model can be specified with the following equations.
 $$
 \begin{aligned}
 \alpha_i &\sim Normal(30, 20)\\
@@ -163,7 +189,7 @@ $$
 accident[i, j] &\sim Normal(\mu_{i,j}, \sigma_j)
 \end{aligned}
 $$
-Both the intercept and slope are modelled with a normal prior.
+Both the intercept and slope are modeled with a normal prior.
 From the linear least mean square fitting, we observe that the mean values are around 25, therefore we set the mean value of $\alpha$'s prior to a number nearby (30).
 Besides, we've kept the variance large to provide relatively weakly informative prior, because we observed large differences among the areas.
 The prior for $\beta$ centers around zero and has a variance at 4.85 as discussed above.
@@ -178,7 +204,7 @@ separate_stan_model = pystan.StanModel(file=model_path + '/' + separate_model_na
 print(separate_stan_model.model_code)
 ```
 
-We define a common function to test the three different stan models, and for simplicity we just report the estimated values of the key parameters $\alpha$, $\beta$ and $\sigma$.
+We define a common function to test the three different stan models, and for simplicity we just report the estimated values of the key parameters $\alpha$, $\beta$ and $\sigma$, which are directly used to generate data points in our model.
 ```{python}
 def test_stan_model(stan_model, data, verbose = False):   
     data_for_stan = dict(
@@ -198,14 +224,14 @@ def test_stan_model(stan_model, data, verbose = False):
     return stan_results
 ```
 
-From the summary by stan, we could see that the accident rate in Metropolitan Area has slightly increased in these years, but all the other five areas have witnessed a decrease in accident rate.
+From the summary by stan, we could see that the accident rate in Metropolitan Area has a slowly-increasing trend in these years, but all the other five areas have witnessed a decrease in the accident rate.
 In this part, the fitted model agrees with our intuition and elementary statistical results.
 ```{python}
 separate_results = test_stan_model(separate_stan_model, accident_data, verbose=verbose)
 ```
 
 ## 3.2 Pooled Model
-In the pooled model, all the 6 areas obeys the same normal distribution.
+In the pooled model, all 6 areas obey the same normal distribution.
 The mathematical expression of this model can be specified by the following equations:
 $$
 \begin{aligned}
@@ -216,7 +242,7 @@ $$
 accident[:, j] &\sim Normal(\mu_{j}, \sigma_j)
 \end{aligned}
 $$
-Note that for fair comparison of the models, we use the same prior as the separate model here.
+Note that for a fair comparison of the models, we use the same prior as the separate model here.
 
 Again, we prepared three sets of priors for sensitivity checking.
 ```{python}
@@ -226,7 +252,7 @@ print(pooled_stan_model.model_code)
 ```
 
 The summary for the pooled model is shown below.
-From the results, we could see that the value for $\alpha$ and $\beta$ is around the mean of the multiple $\alpha_i$ and $\beta_i$ above.
+From the results, we could see that the value for $\alpha$ and $\beta$ is around the mean of the multiple $\alpha_i$ and $\beta_i$ for the separate model.
 However, the variance is larger than the separate model, since it has to cover different scenarios in all areas.
 ```{python}
 pooled_results = test_stan_model(pooled_stan_model, accident_data, verbose=verbose)
@@ -248,14 +274,15 @@ hier_results = test_stan_model(hier_stan_model, accident_data, verbose=verbose)
 
 # 4. Model Evaluation
 
-In this section, we would like to evaluate three models using convergence analysis, cross-validaton with PSIS-LOO, posterior predictive checking and prior sensitivity test.
+In this section, we would like to evaluate three models using convergence analysis, cross-validation with PSIS-LOO, posterior predictive checking and prior sensitivity test.
+We are especially concerned about the choices of the three essential parameters $\alpha$, $\beta$ and $\sigma$ in our model.
 ```{python}
 vars2plot =["alpha", "beta", "sigma"] # the variables that need to be plotted
 ```
 
 ## 4.1 Convergence Analysis
 
-As the third section described, we use linear model for prediction, so in this section, we check the distribution of alpha, beta (which determines the mean value of normal distribution) and sigma (variance of normal distribution).
+As the third section described, we use a linear model for prediction, so in this section, we check the distribution of alpha, beta (which determines the mean value of normal distribution) and sigma (variance of normal distribution).
 
 ### 4.1.1 Rhat value
 As we can see in Section 3, all the $\hat{R}$ values of $\alpha$, $\beta$ and $\sigma$ int the three models are 1.0, which means the Markov Chains in the three models have converged in the sense of $\hat{R}$.
@@ -269,18 +296,18 @@ $$
   \hat{R} = \sqrt{\frac{N-1}{N}+\frac{1}{N}\frac{B}{W}} = \sqrt{1 + \frac{1}{N}(\frac{B}{W}-1)}
 $$
 From the expression we could see, if $N$ is large enough, $\hat{R}$ will always converge to 1.
-If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored similar area in the distribution and they do not have much differences.
+If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored a similar area in the distribution and they do not have many differences.
 If $B$ is much larger than $W$, $\hat{R}$ could be somewhat larger than 1, which means the chains are fairly different from each other and the exploration of the distribution is not enough.
-In our case, $\hat{R}$ is 1.0 a $W$ and $B$ should be approximately equal, indicating that the chains have explored and converged to similar areas in the posterior distribution.
+In our case, $\hat{R}$ is 1.0, so $W$ and $B$ should be approximately equal, indicating that the chains have explored and converged to similar areas in the posterior distribution.
 
 
 ### 4.1.2 Effective Sample Sizes
-In general, MCMC methods raises an issue that samples will be auto-correlated within a chain. 
-And effective sample size(ESS) is thus used to check if a sample was simple random sample. 
+In general, MCMC methods raise an issue that samples will be auto-correlated within a chain. 
+Effective sample size(ESS) is thus used to check if a sample was a simple random sample. 
 To evaluate the convergence of our models, we comply with such a rule: the higher the effective sample size, the more likely the chains for the draws have converged. 
-As [1](https://www.displayr.com/what-is-effective-sample-size/) stated, ESS should be at least 100 times the number of chains. 
-Therefore, we plot the following figures: the dotted line represents 100*n_chains (We train 4 chains in practice). 
-We can firmly conclude our model has converged since all ESS values obviously are over the dotted line.
+As [4](https://www.displayr.com/what-is-effective-sample-size/) stated, ESS should be at least 100 times the number of chains. 
+Therefore, we plot the following figures: the dotted line represents 100*n_chains (we use 4 chains in practice). 
+We can firmly conclude our model has converged since all ESS values are over the dotted line.
 ```{python}
 _ = az.plot_ess(
     separate_results, var_names=vars2plot, 
@@ -306,10 +333,15 @@ _ = az.plot_ess(
 )
 plt.show()
 ```
+
 ### 4.1.3 Chains Analysis
-We also plot all chains in the sampling process. 
-As figures shown, all chains are fluctuated at a small range, and they are also overlapping. 
-Therefore, these chains have converged and traced out a common distribution.
+
+This section presents the plot of all chains in the sampling process. 
+Generally, in all three models, all the chains have converged to distribution, since they just fluctuate within a small range and have a lot of overlap.
+In the pooled model, the variation among the chains is relatively larger than that in the separate and hierarchical model.
+Because it is more difficult to accurately represent all the different areas with the same set of parameters. so the chains would shift between different choices (especially in the plot for `sigma`).
+In the hierarchical model and separate model, each chain just needs to tackle a subset of data, instead of the whole data set, so the between-chain variation will be smaller.
+
 ```{python}
 _ = az.plot_trace(separate_results, var_names = vars2plot, figsize=(20, 30))
 plt.show()
@@ -328,10 +360,11 @@ plt.show()
 
 ### 4.1.4 HMC/NUTS
 
-"The validity of the estimates is not guaranteed if there are post-warmup divergences."[2](https://mc-stan.org/misc/warnings.html)
-To avoid divergent transitions, we firstly check out the maximum treedepth for draws and increase treedepth parameter in the training process. 
+"The validity of the estimates is not guaranteed if there are post-warmup divergences." [5](https://mc-stan.org/misc/warnings.html)
+To avoid divergent transitions, we firstly check out the maximum treedepth, which is 6, 4 and 5 for separate, pooled and hierarchical models.
+Considering the default treedepth in stan is set to 10, our models have not exceeded this limit, therefore we just keep the depth as default.
 Secondly, we evaluate if our training process produces any divergent transitions. 
-Results shown below also prove our models are convergent.
+The results below also prove our models are convergent.
 
 ```{python}
 def get_treedepth(stan_results):    
@@ -351,7 +384,7 @@ get_treedepth(hier_results)
 
 
 ## 4.2 Cross-Validation with PSIS-LOO
-In order to assess the predictive performance of the separate, pooled and hierarchical Guassian model, we uses leave-one-out cross-validation to evaluate.
+In order to assess the model robustness of the separate, pooled and hierarchical model, we examine the behavior of the three models when a part of the data is excluded using leave-one-out cross-validation.
 
 ```{python}
 def get_psis_loo_result(stan_results):
@@ -373,30 +406,24 @@ get_psis_loo_result(pooled_results)
 get_psis_loo_result(hier_results)
 ```
 
-
 As the results shown above, separate model is the best model since it has the largest elpd_loo value. 
 By contrast, the pooled model with the smallest elpd_loo estimate is the worst model. 
-The hierarchical model has a slightly lower elpd_loo value than the one of separate model.
+The hierarchical model has a slightly lower elpd_loo value than separate model.
 
-However, for the separate model, there are 2 out of 90 pareto k diagnostic values are very bad, which marginally increase unreliability of the separate model. 
-This mainly result from some highly influential observations in Great Manchester. As for the hierarchical model,
- with a little sacrifice on elpd_loo value, its all k diagnostic values are lower than 0.7.
+However, for the separate model, there are few pareto k diagnostic values that are very bad, which marginally increase the unreliability of the separate model. 
+This mainly results from some highly influential observations in Great Manchester. 
+As for the hierarchical model, with a little sacrifice on elpd_loo value, all its k diagnostic values are lower than 0.7.
 
 In this section, we can conclude the pooled model is the worst model. 
 But there is a trade-off between performance and reliability for separate model and hierarchical model. 
-We will further compare these two models in following sections.
+We will further compare these two models in the following sections.
 
 
 ## 4.3 Posterior Predictive Check
+
 In this subsection, we will check posterior predictive distribution for 2020. 
-In figures shown below, lines are drawn with different slopes and intercepts based on posterior distributions. 
-Lines in different colors represents different police force areas. 
-Blue, red and black points denote original data points, prediction number in 2020 and posterior samples respectively. 
-At last, vertical lines indicates posterior and prediction variance.
-We can visually compare three models based on these three plots. For the pooled model, posterior samples in each areas are extremely close and far away with original data points. 
-In addition, the variance of prediction is large. For the separate model and hierarchical model, their performance is hard to visually distinguish. 
-However, we can conclude that they are promising because their posterior samples in each area are close to original data points and the variance of prediction is small. 
-To further compare these two models, we need quantitative evaluation, which will be introduced in the following section.
+We first define a utility function for plotting figures and then generate the plots to analyze predictive performance.
+
 ```{python}
 def plot_posterior_draws(stan_results, accident_data, pooled=False):    
     plt.figure(figsize=(15,10))
@@ -464,6 +491,15 @@ def plot_posterior_draws(stan_results, accident_data, pooled=False):
     plt.show()
 ```
 
+In the figures shown below, lines are drawn with different slopes and intercepts based on posterior distributions. 
+Lines in different colors represent different police force areas. 
+Blue, red and black points denote original data points, prediction number in 2020 and posterior samples respectively. 
+At last, vertical lines indicate posterior and prediction variance.
+We can visually compare three models based on these three plots. For the pooled model, posterior samples in each area are extremely close and far away from original data points. 
+In addition, the variance of prediction is large. For the separate model and hierarchical model, their performance is hard to visually distinguish. 
+However, we can conclude that they are promising because their posterior samples in each area are close to original data points and the variance of prediction is small. 
+To further compare these two models, we need quantitative evaluation, which will be introduced in the following section.
+
 ```{python}
 plot_posterior_draws(separate_results, accident_data)
 ```
@@ -476,15 +512,20 @@ plot_posterior_draws(pooled_results, accident_data, pooled=True)
 plot_posterior_draws(hier_results, accident_data)
 ```
 
+## 4.4 Predictive Performance
 
-Also we use $R^2$[3] as a metric to measure the performance of our models. 
-$R^2$ is defined as the variance of the predicted values divided by the variance of predicted values plus the expected variance of the errors. 
+Also, we use $R^2$ [6](https://avehtari.github.io/bayes_R2/bayes_R2.html) as a metric to measure the performance of our models. 
+
+$R^2$ is defined as the variance of the predicted values divided by the variance of predicted values plus the expected variance of the errors:
+$$
+R^{2}=\frac{Var_{\mu}}{Var_{\mu}+Var_{res}},
+$$
+where $Var_{\mu}$ is variance of modelled predictive means, and $Var_{res}$ is the modelled residual variance. 
 Therefore, the $R^2$ value should be close to 1 for a good fit.
-
 As we can see, the pool model has the smallest $R^2$ score, which is definitely the worst model. 
-And the hierarchical model is slightly better than the separate model, with higher $R^2$ score and lower variance.
+And the hierarchical model is slightly better than the separate model, with a higher $R^2$ score and lower variance.
 
-Now, we prefer hierarchical model to separate model since it is more reliable (discussed in section 4.2) and has better predictive performance.
+Now, we prefer the hierarchical model over separate model since it is more reliable (discussed in section 4.2) and has a better predictive performance.
 ```{python}
 az.r2_score(accident_data, separate_results["yrep"])
 ```
@@ -496,10 +537,16 @@ az.r2_score(accident_data, pooled_results["yrep"])
 ```{python}
 az.r2_score(accident_data, hier_results["yrep"])
 ```
-## 4.4 Prior Sensitivity Test
-In this subsection, we manage to test sensitivity of our models to different prior distribution. Our models require slope and intercept prior information. Here, we treat prior distribution described in section 3 as default prior distribution, **which is based on our observation and assumption that the mean car accident rates changes less than 50 % in one year.** Then, we also apply non-informative prior distribution (uniform prior distribution) and another weakly prior similar with default prior, but it has larger variance.
 
-As can be seen from the forest plots, our models are robust with different prior choices, because there is no clear deviation in the posterior distributions with different prior. In addition, Rhat (all values are equal to 1) and ESS values indicates models can be converged with different prior settings.
+## 4.5 Prior Sensitivity Test
+
+In this subsection, we manage to test the sensitivity of our models to the different prior distribution. 
+Our models require slope and intercept prior information. 
+Here, we treat the prior distribution described in Section 3 as default prior distribution, which is based on our observation and assumption that the mean accident rates change less than 50 % in one year.
+Then, we also apply non-informative prior distribution (uniform prior distribution) and another weakly prior similar with default prior, but it has a larger variance.
+
+As can be seen from the forest plots, our models are robust with different prior choices, because there is no clear deviation in the posterior distributions with different prior. 
+In addition, Rhat (all values are equal to 1) and ESS values indicate models can be converged with different prior settings.
 ```{python}
 data_dict = dict()
 names = ["default_prior", "uniform_prior", "bigger_variance"]
@@ -555,24 +602,44 @@ get_plot_forest(hier_stan_model, data_dict)
 # 5. Conclusion and Future Work
 
 ## 5.1 Project Conclusion
-Based on the evaluation on section4, we would like to compare three models in four aspects, including convergence analysis, cross-validation with PSIS-LOO, posterior predictive checking, predictive performance and prior sensitivity test.
+Based on the evaluation in section4, we would like to compare three models in four aspects, including convergence analysis, cross-validation with PSIS-LOO, posterior predictive checking, predictive performance and prior sensitivity test.
 
 For convergence analysis, it is confirmed that all models are converged since 1. all Rhat values are 1.0; 2. ESS is large enough; 3. chains are visually converged. 4.no divergent transitions.
-
-From the result of cross validation, we conclude pooled model is the worst model. 
-The separate model has slightly larger elpd_loo value while the hierarchical model is more reliable.
-
+From the result of cross-validation, we conclude the pooled model is the worst model. 
+The separate model has a slightly larger elpd_loo value while the hierarchical model is more reliable.
 After checking posterior predictive distribution, we further confirm that the pooled model is the worst model. 
-The separate model and the hierarchical model fit the data well and give stable prediction.
+The separate model and the hierarchical model fit the data well and give a stable prediction.
+In the comparison of predictive performance, we find that the hierarchical model has the best predictive performance with the largest $R^2$ score and the smallest variance.
+Eventually, our proposed models are robust with a different prior distribution.
+Based on these results, it is clear that the hierarchical model is reliable and has a good predictive performance. 
+Therefore, we adopt the hierarchical model as the optimal model to analyze our problem, which is to predict the car accident rate in different areas in the UK. 
 
-In the comparison of predictive performance, we find that the hierarchical model has the best predictive performance with largest $R^2$ score and the smallest variance.
+Based on the fitting result of the hierarchical model, the accident rate per 10000 people in Metropolitan Police area will probably increase by 0.05 and the estimated number of cases will reach about 24873 in total.
+In contrast, the accident rate in all the other five areas would decrease.
+In 2020, the Great Manchester would probably have 414 traffic accidents less than in 2019.
+Therefore, the local authority of the Metropolitan area should pay more attention to traffic management and propose effective methods to alleviate the harm from accidents.
 
-Eventually, our proposed models are robust with different prior distribution.
-
-Based on these results, it is clear that the hierarchical model is reliable and has good predictive performance. 
-Therefore, we adopt **the hierarchical model** as the optimal model to analyze our problem, which is to predict car accident rate in different areas in UK. 
 
 ## 5.2 Findings
 
-# References
+The accident rate in an area could, to an extend, reflect the efficiency of local traffic management or people's adherence to traffic rules.
+Based on the fitting results of our model, we found that the separate model and hierarchical model give similar results, but the pooled model is far worse than the other two.
+We may conclude that the traffic management strength varies among those areas, and they can not be represented uniformly by a single normal distribution, since the pooled model merely demonstrates pool performance.
+Further, we have sufficient reasons to believe the variation is quite large, because the hierarchical model and the separate model give similar results, which means there is not a distinct hierarchical structure in UK's traffic management system.
+Nevertheless, we believe the hierarchical model is the best tool to capture the trends in our data, because of its robustness and predictive performance.
 
+## 5.3 Future Work
+
+1. In this project, we have evaluated three models, including separate model, pooled model and hierarchical model with normal distribution. We should also investigate other distribution to find possible improvement.
+
+2. We have modeled the relationship between accident rate and years. We can further study the influence of weather, lighting condition, festivals and other factors on accident rates, since these studies can provide a more informative prediction for people.
+
+3. Currently, we only analyze six representative areas because of limited computational resources. In the future, we would like to add more areas and even predict accident rates per month to obtain a more comprehensive result.
+
+# References
+[1] Global status report on road safety 2018 https://www.who.int/publications/i/item/9789241565684
+[2] Road Safety Questions and Answers https://www.racfoundation.org/motoring-faqs/safety#a1. 
+[3] Road Safety Data https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data
+[4] What is Effective Sample Size https://www.displayr.com/what-is-effective-sample-size/
+[5] Brief Guide to Stan’s Warnings https://mc-stan.org/misc/warnings.html
+[6] Bayesian R2 and LOO-R2 https://avehtari.github.io/bayes_R2/bayes_R2.html
