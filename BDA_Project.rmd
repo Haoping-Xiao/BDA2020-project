@@ -80,20 +80,39 @@ print(accident_data.shape)
 
 The processed data are shown as follows:
 ```{python}
-area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
-               'Merseyside','Greater Manchester','Cheshire']
+area_names = ["MetroPolice", 'Cumbria','Lancashire',
+               'Merseyside','GManchest','Cheshire']
 years = np.arange(2005, 2020, 1).astype(np.int)
 df = pd.DataFrame(accident_data, index=area_names, columns=years)
-df
+# print(df.to_markdown())
 ```
+
+|  Area    |   2005 |   2006 |   2007 |   2008 |   2009 |   2010 |   2011 |   2012 |   2013 |   2014 |   2015 |   2016 |   2017 |   2018 |   2019 |
+|:--------------------|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|
+| MetroPolice |  29.57 |  27.31 |  25.58 |  25.46 |  25.64 |  26.57 |  26.91 |  26.47 |  25.43 |  28.66 |  27.77 |  27.66 |  29.84 |  28.33 |  27.96 |
+| Cumbria             |  38    |  34.12 |  34.88 |  31.46 |  29.42 |  25.68 |  25.12 |  24.9  |  24.52 |  27.94 |  25.86 |  25.62 |  25.82 |  24.88 |  20.5  |
+| Lancashire          |  36.39 |  35.23 |  34.77 |  32.88 |  31.17 |  29.42 |  26.99 |  26.1  |  24.89 |  25.71 |  24.59 |  24.35 |  22.23 |  22.39 |  19.54 |
+| Merseyside          |  34.26 |  30.28 |  26.79 |  24.54 |  22.46 |  22.11 |  21.14 |  21.33 |  18.57 |  19.8  |  18.92 |  17.44 |  15.67 |  15.99 |  15.03 |
+| GManchest  |  32.52 |  29.72 |  26.94 |  25.2  |  22.96 |  19.2  |  18.08 |  15.44 |  13.62 |  14.12 |  10.84 |  10.25 |  14.35 |  13.27 |  12.77 |
+| Cheshire            |  36.89 |  34.59 |  33.23 |  31.09 |  30.66 |  28.29 |  27.42 |  26.48 |  24.01 |  25.06 |  21.77 |  22.22 |  20.72 |  19.02 |  16.21 |
+
 
 The following elementary statistics could also help us gain some insights into the data.
 Greater Manchester has the lowest mean accident rate, while Cumbria has the highest mean.
 Notably, the average accident rates in Metropolitan Police and Lancashire are fairly close to the highest.
 ```{python}
-df.T.describe().round(2)
+# print(df.T.describe().round(2).to_markdown())
 ```
-
+|       |   MetroPolice |   Cumbria |   Lancashire |   Merseyside |   GManchest |   Cheshire |
+|:------|----------------------:|----------:|-------------:|-------------:|---------------------:|-----------:|
+| count |                 15    |     15    |        15    |        15    |                15    |      15    |
+| mean  |                 27.28 |     27.91 |        27.78 |        21.62 |                18.62 |      26.51 |
+| std   |                  1.45 |      4.74 |         5.24 |         5.47 |                 7.15 |       6.01 |
+| min   |                 25.43 |     20.5  |        19.54 |        15.03 |                10.25 |      16.21 |
+| 25%   |                 26.06 |     25.01 |        24.47 |        18.01 |                13.44 |      21.99 |
+| 50%   |                 27.31 |     25.82 |        26.1  |        21.14 |                15.44 |      26.48 |
+| 75%   |                 28.14 |     30.44 |        32.03 |        23.5  |                24.08 |      30.88 |
+| max   |                 29.84 |     38    |        36.39 |        34.26 |                32.52 |      36.89 |
 
 Also, we could calculate the mean accident rate in each area, which turns out to be approximately $25$.
 ```{python}
@@ -378,7 +397,6 @@ We can visually compare three models based on these three plots. For the pooled 
 In addition, the variance of prediction is large. For the separate model and hierarchical model, their performance is hard to visually distinguish. 
 However, we can conclude that they are promising because their posterior samples in each area are close to original data points and the variance of prediction is small. 
 To further compare these two models, we need quantitative evaluation, which will be introduced in the following section.
-
 ```{python}
 def plot_posterior_draws(stan_results, accident_data, pooled=False):    
     plt.figure(figsize=(15,10))
@@ -446,14 +464,8 @@ def plot_posterior_draws(stan_results, accident_data, pooled=False):
     plt.show()
 ```
 
-
-
 ```{python}
 plot_posterior_draws(separate_results, accident_data)
-```
-
-```{python}
-az.r2_score(accident_data, separate_results["yrep"])
 ```
 
 ```{python}
@@ -461,19 +473,33 @@ plot_posterior_draws(pooled_results, accident_data, pooled=True)
 ```
 
 ```{python}
-az.r2_score(accident_data, pooled_results["yrep"])
+plot_posterior_draws(hier_results, accident_data)
+```
+
+
+Also we use $R^2$[3] as a metric to measure the performance of our models. 
+$R^2$ is defined as the variance of the predicted values divided by the variance of predicted values plus the expected variance of the errors. 
+Therefore, the $R^2$ value should be close to 1 for a good fit.
+
+As we can see, the pool model has the smallest $R^2$ score, which is definitely the worst model. 
+And the hierarchical model is slightly better than the separate model, with higher $R^2$ score and lower variance.
+
+Now, we prefer hierarchical model to separate model since it is more reliable (discussed in section 4.2) and has better predictive performance.
+```{python}
+az.r2_score(accident_data, separate_results["yrep"])
 ```
 
 ```{python}
-plot_posterior_draws(hier_results, accident_data)
+az.r2_score(accident_data, pooled_results["yrep"])
 ```
 
 ```{python}
 az.r2_score(accident_data, hier_results["yrep"])
 ```
-
 ## 4.4 Prior Sensitivity Test
+In this subsection, we manage to test sensitivity of our models to different prior distribution. Our models require slope and intercept prior information. Here, we treat prior distribution described in section 3 as default prior distribution, **which is based on our observation and assumption that the mean car accident rates changes less than 50 % in one year.** Then, we also apply non-informative prior distribution (uniform prior distribution) and another weakly prior similar with default prior, but it has larger variance.
 
+As can be seen from the forest plots, our models are robust with different prior choices, because there is no clear deviation in the posterior distributions with different prior. In addition, Rhat (all values are equal to 1) and ESS values indicates models can be converged with different prior settings.
 ```{python}
 data_dict = dict()
 names = ["default_prior", "uniform_prior", "bigger_variance"]
@@ -528,7 +554,7 @@ get_plot_forest(hier_stan_model, data_dict)
 
 # 5. Conclusion and Future Work
 
-## 5.1 Discussion
+## 5.1 Project Conclusion
 Based on the evaluation on section4, we would like to compare three models in four aspects, including convergence analysis, cross-validation with PSIS-LOO, posterior predictive checking, predictive performance and prior sensitivity test.
 
 For convergence analysis, it is confirmed that all models are converged since 1. all Rhat values are 1.0; 2. ESS is large enough; 3. chains are visually converged. 4.no divergent transitions.
@@ -547,9 +573,6 @@ Based on these results, it is clear that the hierarchical model is reliable and 
 Therefore, we adopt **the hierarchical model** as the optimal model to analyze our problem, which is to predict car accident rate in different areas in UK. 
 
 ## 5.2 Findings
-
-
-# Appendix
 
 # References
 
