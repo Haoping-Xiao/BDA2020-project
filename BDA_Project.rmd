@@ -39,6 +39,7 @@ This submission is completed in `python` with `pystan`.
 
 ```{r, engine='python'}
 import numpy as np 
+import pandas as pd
 import matplotlib.pyplot as plt 
 # with out this, plots from matplotlib won't knit on windows
 import matplotlib
@@ -56,21 +57,45 @@ print("pystan version:", pystan.__version__)
 
 ```
 
-# 2. Data Preprocessing and Visualization
+# 2. Data Description
 
-## 2.X Elementary Statistics
+## 2.1 Data Preprocess
+As the first section described, Road Satety Data contains millions of car accident records from 2005 to 2019 in UK. Those records contains much information irrelevant to our goal such as number of vehicles, speed limit, light conditions and many other factors. In addition, the records provide no information on the number of accidents per year directly. Luckily, it is still possible to obtain our interested data by counting car accident records in which dates are the same year. However, there is an extensive difference on the number of car accidents which mainly results from tremendous difference on population. This difference hinders fair comparison on traffic management system in different areas. To eliminate this negative effect,  we perform data normalization, which is  dividing the number of car accidents by the population in each area. Although Road Satety Data does not provide population information, we eventually find `public population information` via UK parkiament.
+
+To sum up:
+
+1. Extract two columns from the original data, including "date" and "police force". Date shows the date of one accident and police force indicates the responsible police office of the accident spot.
+2. Count the number of records per police force area in each year(2005-2019).
+3. Calculate accident rates per 10,000 people.
+
+## 2.2 Data Visualization
 After preprocessing of the raw data, we could perform some elementary statistical analysis to obtain an intuitive grasp of the data.
 The data here summarizes the number of accidents in 6 areas from 2005 to 2019 (15 years in total), therefore the processed data have size (6,15).
 ```{python}
-area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
-               'Merseyside','Greater Manchester','Cheshire']
 model_path = './Stan'
-data_file = './data/data.txt'
+data_file = './Data/data.txt'
 accident_data = np.loadtxt(data_file)
 print(accident_data.shape)
 ```
 
-First, we could calculate the mean accident rate in each area, which turns out to be approximately $25$.
+The processed data are shown as follows:
+```{python}
+area_names = ["Metropolitan Police", 'Cumbria','Lancashire',
+               'Merseyside','Greater Manchester','Cheshire']
+years = np.arange(2005, 2020, 1).astype(np.int)
+df = pd.DataFrame(accident_data, index=area_names, columns=years)
+df
+```
+
+The following elementary statistics could also help us gain some insights into the data.
+Greater Manchester has the lowest mean accident rate, while Cumbria has the highest mean.
+Notably, the average accident rates in Metropolitan Police and Lancashire are fairly close to the highest.
+```{python}
+df.T.describe().round(2)
+```
+
+
+Also, we could calculate the mean accident rate in each area, which turns out to be approximately $25$.
 ```{python}
 # mean value approximately 25 cases per 10,000 people
 mean_value = np.mean(accident_data) 
@@ -81,7 +106,6 @@ Then, we fit a simple linear model with least mean square method to the data poi
 From the results, we could see that the number of cases in the Metropolitan Police area has been increasing slowly, while the  cases in the other five police areas have been decreasing with similar trends.
 ```{python}
 plt.figure(figsize=(12, 6));
-years = np.arange(2005, 2020, 1).astype(np.int)
 for i in range(6):
     plt.scatter(years, accident_data[i, :], marker='.', s=20)
     fit = np.polyfit(years, accident_data[i, :], 1)
@@ -109,7 +133,8 @@ sigma_cand
 Then, we build separate, pooled and hierarchical model to fit our data.
 
 ## 3.1 Separate Model
-In a separate model, we treat each district as an individual entity, and assign independent parameters to them. Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations, where the prior choices are based on the analysis above.
+In a separate model, we treat each district as an individual entity, and assign independent parameters to them. 
+Specifically, we assign individual parameters $\alpha_i$ and $\beta_i$ to the $i$th area, and make the mean vary linearly with respect to years. But each district will have a constant variance across all 15 years. The mathematical expression for the separate model can be specified with the following equations, where the prior choices are based on the analysis above.
 $$
 \begin{aligned}
 \alpha_i &\sim Normal(30, 20)\\
@@ -214,8 +239,8 @@ vars2plot =["alpha", "beta", "sigma"] # the variables that need to be plotted
 As the third section described, we use linear model for prediction, so in this section, we check the distribution of alpha, beta (which determines the mean value of normal distribution) and sigma (variance of normal distribution).
 
 ### 4.1.1 Rhat value
-As we can see, the $\hat{R}$ of $\alpha$ and $\beta$ are fairly close to 1.
-The idea behind $\hat{R}$ is the law of total variance:
+As we can see in Section 3, all the $\hat{R}$ values of $\alpha$, $\beta$ and $\sigma$ int the three models are 1.0, which means the Markov Chains in the three models have converged in the sense of $\hat{R}$.
+Actually, the idea behind $\hat{R}$ is the law of total variance:
 $$
   Var(X) = E[Var(X|Y)] + Var\left(E[X|Y]\right),
 $$
@@ -224,9 +249,11 @@ $\hat{R}$ is total variance divided by $W$ then take square root:
 $$
   \hat{R} = \sqrt{\frac{N-1}{N}+\frac{1}{N}\frac{B}{W}} = \sqrt{1 + \frac{1}{N}(\frac{B}{W}-1)}
 $$
-From the expression we could see, if $N$ is large enough, $\hat{R}$ will converge to 1.
+From the expression we could see, if $N$ is large enough, $\hat{R}$ will always converge to 1.
 If $B$ is much smaller than $W$, $\hat{R}$ could be smaller than 1, which means the chains have explored similar area in the distribution and they do not have much differences.
 If $B$ is much larger than $W$, $\hat{R}$ could be somewhat larger than 1, which means the chains are fairly different from each other and the exploration of the distribution is not enough.
+In our case, $\hat{R}$ is 1.0 a $W$ and $B$ should be approximately equal, indicating that the chains have explored and converged to similar areas in the posterior distribution.
+
 
 ### 4.1.2 Effective Sample Sizes
 In general, MCMC methods raises an issue that samples will be auto-correlated within a chain. 
@@ -395,8 +422,8 @@ def plot_posterior_draws(stan_results, accident_data, pooled=False):
         )
 
 
-    _ = plt.scatter(np.tile(years, 6), accident_data.flatten(), zorder=j+i+100, edgecolors='black')
-    # _ = plt.scatter(data_for_stan["years"], data_for_stan["accidentData"], zorder=j+i+100, edgecolors='black')
+    _ = plt.scatter(np.tile(years, 6), accident_data.flatten(), zorder=j+i+100, 
+                    edgecolors='black')
     _ = plt.title("Posterior predictive check")
     _ = plt.legend(bbox_to_anchor=(1.05, 1), loc='lower left', borderaxespad=0.)
 
@@ -407,7 +434,8 @@ def plot_posterior_draws(stan_results, accident_data, pooled=False):
         Line2D([0], [0], color='gray', lw=4, label='Merseyside'),
         Line2D([0], [0], color='green', lw=4, label='Greater Manchester'),
         Line2D([0], [0], color='purple', lw=4, label='Cheshire'),
-        Line2D([0], [0], marker='o', color='black', label='Original datapoint', markerfacecolor='b', markersize=15),
+        Line2D([0], [0], marker='o', color='black', label='Original datapoint', 
+                         markerfacecolor='b', markersize=15),
         Line2D([0], [0], marker='o', color='red', label='Predictions 2020', markersize=15),
         Line2D([0], [0], marker='o', color='black', label='Posterior samples', markersize=15),
     ]
@@ -499,6 +527,27 @@ get_plot_forest(hier_stan_model, data_dict)
 ```
 
 # 5. Conclusion and Future Work
+
+## 5.1 Discussion
+Based on the evaluation on section4, we would like to compare three models in four aspects, including convergence analysis, cross-validation with PSIS-LOO, posterior predictive checking, predictive performance and prior sensitivity test.
+
+For convergence analysis, it is confirmed that all models are converged since 1. all Rhat values are 1.0; 2. ESS is large enough; 3. chains are visually converged. 4.no divergent transitions.
+
+From the result of cross validation, we conclude pooled model is the worst model. 
+The separate model has slightly larger elpd_loo value while the hierarchical model is more reliable.
+
+After checking posterior predictive distribution, we further confirm that the pooled model is the worst model. 
+The separate model and the hierarchical model fit the data well and give stable prediction.
+
+In the comparison of predictive performance, we find that the hierarchical model has the best predictive performance with largest $R^2$ score and the smallest variance.
+
+Eventually, our proposed models are robust with different prior distribution.
+
+Based on these results, it is clear that the hierarchical model is reliable and has good predictive performance. 
+Therefore, we adopt **the hierarchical model** as the optimal model to analyze our problem, which is to predict car accident rate in different areas in UK. 
+
+## 5.2 Findings
+
 
 # Appendix
 
