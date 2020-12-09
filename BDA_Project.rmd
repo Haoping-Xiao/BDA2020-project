@@ -638,8 +638,13 @@ Nevertheless, we believe the hierarchical model is the best tool to capture the 
 
 # References
 [1] Global status report on road safety 2018 https://www.who.int/publications/i/item/9789241565684
+
 [2] Road Safety Questions and Answers https://www.racfoundation.org/motoring-faqs/safety#a1. 
+
 [3] Road Safety Data https://data.gov.uk/dataset/cb7ae6f0-4be6-4935-9277-47e5ce24a11f/road-safety-data
+
 [4] What is Effective Sample Size https://www.displayr.com/what-is-effective-sample-size/
+
 [5] Brief Guide to Stan’s Warnings https://mc-stan.org/misc/warnings.html
+
 [6] Bayesian R2 and LOO-R2 https://avehtari.github.io/bayes_R2/bayes_R2.html
